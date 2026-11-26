@@ -120,7 +120,36 @@ main { padding: 14px 20px 110px; }
 .zbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line-2); }
 .zbar .info { font: 12.5px var(--mono); color: var(--muted); flex: 1; min-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zbar .info b { color: var(--text); font-weight: 500; }
-.toasts { position: fixed; right: 18px; bottom: 70px; display: grid; gap: 8px; z-index: 30; max-width: min(460px, 92vw); }
+/* drag and drop */
+.card .im { -webkit-user-drag: none; }
+.card.lifted { opacity: .35; }
+body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.dragghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(14px, 12px); }
+.dragghost .pile { position: relative; width: 132px; height: 74px; }
+.dragghost .pile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 6px;
+  border: 1.5px solid rgba(255, 255, 255, .75); box-shadow: 0 8px 22px rgba(0, 0, 0, .65); background: #000; }
+.dragghost .pile img:nth-last-child(2) { transform: rotate(5deg) translate(6px, -3px); }
+.dragghost .pile img:nth-last-child(3) { transform: rotate(-5deg) translate(-6px, -2px); }
+.dragghost .count { position: absolute; top: -9px; right: -9px; z-index: 2; min-width: 22px; padding: 0 6px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink); font: 700 12px/22px var(--sans); text-align: center; }
+.dragghost .to { display: inline-block; margin-top: 8px; padding: 4px 8px; border-radius: 6px; background: rgba(0, 0, 0, .85);
+  font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.dragghost .to b { color: var(--c); font-weight: 600; }
+.dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; padding: 10px 20px 14px; background: rgba(19, 22, 19, .98);
+  border-top: 1px solid var(--line-2); box-shadow: 0 -10px 30px rgba(0, 0, 0, .45); }
+.dock .dhint { font: 12px var(--mono); color: var(--muted); margin-bottom: 8px; }
+.zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.zone { display: flex; align-items: center; gap: 8px; min-height: 60px; padding: 12px 14px; border-radius: 10px; font: 13px var(--mono);
+  border: 1.5px dashed color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 6%, transparent);
+  transition: background .1s, border-color .1s; }
+.zone .d { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+.zone b { font-weight: 600; }
+.zone .zn { margin-left: auto; color: var(--faint); font-size: 11.5px; text-align: right; }
+.zone.here, .zone.off { opacity: .3; }
+.zone.dropok { border-style: solid; border-color: var(--c); background: color-mix(in srgb, var(--c) 24%, transparent); }
+.tab.dropok, .ucard.dropok { border-color: var(--c); background: color-mix(in srgb, var(--c) 22%, transparent); color: var(--text); }
+.grid.filedrop { outline: 2px dashed var(--accent); outline-offset: 6px; border-radius: 8px; }
+.toasts { position: fixed; right: 18px; bottom: 70px; display: grid; gap: 8px; z-index: 60; max-width: min(460px, 92vw); }
 .toast { background: #1b201b; border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
 .toast.err { border-left-color: var(--err); }
 @media (max-width: 700px) {
@@ -161,7 +190,7 @@ main { padding: 14px 20px 110px; }
   <button class="btn" data-to="suggest">Use suggestion<kbd>S</kbd></button>
   <button class="btn" data-to="rejected" style="--c:var(--rejected)"><span class="d"></span>Reject<kbd>X</kbd></button>
   <button class="btn" data-to="inbox" style="--c:var(--inbox)"><span class="d"></span>Back to inbox<kbd>0</kbd></button>
-  <span class="hint">click · ⇧-click range · ⌘-click add · ⌘A all · space: look closer · C: crop / rotate · ←→↑↓ move</span>
+  <span class="hint">drag photos onto a pool · click · ⇧-click range · ⌘-click add · ⌘A all · space: look closer · C: crop / rotate</span>
 </div>
 
 <div class="zoom" id="zoom" hidden>
@@ -188,7 +217,18 @@ main { padding: 14px 20px 110px; }
     <button class="btn" id="ccancel">Cancel<kbd>esc</kbd></button>
   </div>
 </div>
+<div class="dock" id="dock" hidden>
+  <div class="dhint" id="dhint"></div>
+  <div class="zones">
+    <div class="zone" data-drop="bright" style="--c:var(--bright)"><span class="d"></span><b>Bright</b><span class="zn"></span></div>
+    <div class="zone" data-drop="texture" style="--c:var(--texture)"><span class="d"></span><b>Texture</b><span class="zn"></span></div>
+    <div class="zone" data-drop="dark" style="--c:var(--dark)"><span class="d"></span><b>Dark</b><span class="zn"></span></div>
+    <div class="zone" data-drop="rejected" style="--c:var(--rejected)"><span class="d"></span><b>Reject</b><span class="zn"></span></div>
+    <div class="zone" data-drop="inbox" style="--c:var(--inbox)"><span class="d"></span><b>Inbox</b><span class="zn"></span></div>
+  </div>
+</div>
 <div class="toasts" id="toasts"></div>
+<script src="/web/drag.js"></script>
 
 <script>
 // Every photo is in one folder: inbox, bright, texture, dark or rejected. Choosing a pool moves the file there
@@ -235,7 +275,7 @@ function drawUsage() {
   if (!U || U.error) { el.innerHTML = U && U.error ? `<div class="ul need" style="grid-column:1/-1">${esc(U.error)}</div>` : ''; return; }
   el.innerHTML = ['bright', 'texture', 'dark'].map(k => {
     const d = U.pools[k], x = d.per_photo || 0, need5 = Math.ceil(d.cuts / 5);
-    return `<div class="ucard" data-pool="${k}" style="--c:${COLOR[k]};--lvl:${level(x)}">
+    return `<div class="ucard" data-pool="${k}" data-drop="${k}" style="--c:${COLOR[k]};--lvl:${level(x)}">
       <div class="uh"><span class="d"></span><b>${k}</b> <span style="color:var(--muted)">${d.photos} photos · ${d.cuts} cuts</span>
         <span class="x" title="cuts per photo on average">${d.photos ? x.toFixed(1) + '× each' : '—'}</span></div>
       <div class="ubar"><i style="width:${Math.min(100, x / 12 * 100)}%"></i></div>
@@ -261,7 +301,7 @@ async function load() {
 }
 function draw() {
   const c = L.counts, all = Object.values(c).reduce((a, b) => a + b, 0);
-  $('#tabs').innerHTML = TABS.map(t => `<button class="tab ${t === tab ? 'on' : ''}" data-tab="${t}" style="--c:${COLOR[t] || 'var(--muted)'}">
+  $('#tabs').innerHTML = TABS.map(t => `<button class="tab ${t === tab ? 'on' : ''}" data-tab="${t}"${t === 'all' ? '' : ` data-drop="${t}"`} style="--c:${COLOR[t] || 'var(--muted)'}">
     ${t === 'all' ? '' : '<span class="d"></span>'}${t} <b>${t === 'all' ? all : c[t]}</b></button>`).join('');
   const v = visible();
   focus = Math.max(0, Math.min(focus, v.length - 1));
@@ -282,11 +322,11 @@ function draw() {
   const e = $('#empty');
   e.hidden = v.length > 0;
   if (!v.length) e.innerHTML = tab === 'inbox'
-    ? `The inbox is empty.<br>Select photos in the Photos app and click <b>Import Photos selection</b>,<br>pick an album under <b>Import album…</b>, or <b>Add files…</b> from Finder.`
+    ? `The inbox is empty.<br>Drag photos or folders here from Finder,<br>select photos in the Photos app and click <b>Import Photos selection</b>,<br>pick an album under <b>Import album…</b>, or <b>Add files…</b>.`
     : `No photos in ${tab}.`;
   const n = sel.size;
   $('#nsel').textContent = n ? `${n} selected` : (v.length ? 'nothing selected (keys act on the outlined one)' : 'nothing selected');
-  if (!watching) $('#job').textContent = L.unscored ? `working out suggestions for ${L.unscored} photos…` : '';
+  if (!watching && !adding) $('#job').textContent = L.unscored ? `working out suggestions for ${L.unscored} photos…` : '';
   document.body.classList.toggle('whole', view === 'whole');
   if (zoomAt !== null) drawZoom();
 }
@@ -349,6 +389,7 @@ async function assign(to, refs) {
     if (!nv.length) closeZoom();
     else { zoomAt = tab === 'all' ? Math.min(zoomAt + 1, nv.length - 1) : Math.min(zoomAt, nv.length - 1); drawZoom(); }
   }
+  return moved;
 }
 const targets = () => { const v = visible(); return sel.size ? [...sel] : (v[focus] ? [v[focus].ref] : []); };
 $('#act').addEventListener('click', e => { const b = e.target.closest('[data-to]'); if (b) assign(b.dataset.to, targets()); });
@@ -581,6 +622,94 @@ $('#impFiles').onclick = async () => {
     tab = 'inbox'; sig = ''; load();
   } catch (e) { toast(e.message, 'err'); }
 };
+
+// ---------------------------------------------------------------- drag and drop
+// Photos: drag one (or the selection) onto a pool: the dock at the bottom, a tab or a usage card.
+// Files and folders from Finder: drop on a pool in the dock, or anywhere else to add them to the tab you're on.
+const HOME = ['inbox', 'bright', 'texture', 'dark'];                // where new files may go
+const fileHome = () => HOME.includes(tab) ? tab : 'inbox';
+function showDock(mode, refs = []) {
+  const dock = $('#dock');
+  $('#grid').classList.toggle('filedrop', mode === 'files');
+  if (!mode) { dock.hidden = true; return; }
+  const from = new Set(refs.map(r => r.split('/')[0]));
+  dock.querySelectorAll('.zone').forEach(z => {
+    const w = z.dataset.drop, n = L ? L.counts[w] : 0;
+    const off = mode === 'files' && !HOME.includes(w), here = mode === 'photos' && from.size === 1 && from.has(w);
+    z.classList.toggle('off', off); z.classList.toggle('here', here);
+    z.querySelector('.zn').textContent = off ? 'not for new files' : here ? 'already here' : `${n} photo${n === 1 ? '' : 's'}`;
+  });
+  $('#dhint').textContent = mode === 'files'
+    ? `Drop on a pool to add the photos there, or on the grid to add them to ${fileHome()}. Folders work too.`
+    : `Drop on a pool to move ${refs.length === 1 ? 'the photo' : `these ${refs.length} photos`} there (or on a tab at the top). Esc cancels.`;
+  dock.hidden = false;
+}
+window.SF && SF.pointerDrag({
+  root: $('#grid'), items: '.card', targets: '[data-drop]',
+  start(el) {
+    const v = visible(), i = +el.dataset.i, p = v[i];
+    if (!p || zoomAt !== null) return null;
+    if (!sel.has(p.ref)) { sel = new Set([p.ref]); anchor = i; }   // dragging an unselected photo drags just that one
+    focus = i; draw();
+    const refs = v.filter(x => sel.has(x.ref)).map(x => x.ref);
+    document.querySelectorAll('#grid .card.sel').forEach(c => c.classList.add('lifted'));
+    showDock('photos', refs);
+    const pics = refs.slice(0, 3).map(r => document.querySelector(`#grid .card[data-ref="${CSS.escape(r)}"] .im`)).filter(Boolean).map(im => im.src);
+    return {refs, ghost: `<div class="pile">${pics.reverse().map(s => `<img src="${esc(s)}" alt="">`).join('')}` +
+      `${refs.length > 1 ? `<span class="count">${refs.length}</span>` : ''}</div><div class="to"></div>`};
+  },
+  accepts: (t, d) => t.dataset.drop in COLOR && d.refs.some(r => r.split('/')[0] !== t.dataset.drop),
+  label: (t, d) => t ? `move ${d.refs.length > 1 ? d.refs.length + ' ' : ''}to <b style="--c:${COLOR[t.dataset.drop]}">${t.dataset.drop}</b>` : 'drop on a pool',
+  async drop(t, d) {
+    const to = t.dataset.drop, n = await assign(to, d.refs);
+    if (n) toast(`Moved ${n} photo${n > 1 ? 's' : ''} to ${to}`);
+  },
+  end() { showDock(null); document.querySelectorAll('#grid .card.lifted').forEach(c => c.classList.remove('lifted')); },
+});
+window.SF && SF.fileDrops({
+  where: el => {
+    const z = el && el.closest('[data-drop]');
+    if (z) return HOME.includes(z.dataset.drop) ? z.dataset.drop : null;
+    return zoomAt === null ? fileHome() : null;
+  },
+  light: to => document.querySelector(`#dock .zone[data-drop="${to}"]`),
+  show: on => showDock(on ? 'files' : null),
+  refused: () => toast(zoomAt === null ? 'New photos go into the inbox or a pool; reject them from there.' : 'Close the large view first, then drop the files.', 'err'),
+  drop: (to, files) => addFiles(to, files),
+});
+let adding = false;
+async function addFiles(to, files) {
+  const exts = new Set(L ? L.exts : []);
+  const pics = files.filter(f => exts.has(SF.extOf(f.name))), others = files.length - pics.length;
+  if (!pics.length) {
+    toast(files.length ? `None of that is a photo this reads (${[...exts].join(' ')})`
+      : 'Nothing came through. From the Photos app, drag the photos to the Desktop first, or use Import Photos selection.', 'err');
+    return;
+  }
+  const have = new Map((L ? L.photos : []).map(p => [p.name.toLowerCase() + '|' + p.size, p]));
+  const dupes = [], taken = [];
+  let added = 0;
+  adding = true;
+  for (let i = 0; i < pics.length; i++) {
+    const f = pics[i], same = have.get(f.name.toLowerCase() + '|' + f.size);
+    $('#job').textContent = `adding ${i + 1}/${pics.length} to ${to}…`;
+    if (same) { dupes.push(`${f.name} (in ${same.where})`); continue; }    // the same photo is already here
+    try {
+      const r = await fetch(`/api/upload?to=${encodeURIComponent(to)}&name=${encodeURIComponent(f.name)}`, {method: 'POST', body: f});
+      const j = await r.json().catch(() => ({error: r.statusText}));
+      if (r.status === 409) taken.push(f.name);
+      else if (!r.ok) toast(`${f.name}: ${j.error || r.statusText}`, 'err');
+      else { added++; have.set(f.name.toLowerCase() + '|' + f.size, {where: to}); }
+    } catch (e) { toast(`${f.name}: ${e.message}`, 'err'); }
+  }
+  adding = false; $('#job').textContent = '';
+  const some = (xs, n = 3) => xs.slice(0, n).join(', ') + (xs.length > n ? ` and ${xs.length - n} more` : '');
+  if (added) toast(`Added ${added} photo${added > 1 ? 's' : ''} to ${to}`);
+  if (dupes.length) toast(`Already have ${dupes.length > 1 ? 'these' : 'this'}, skipped: ${some(dupes)}`, 'err');
+  if (taken.length) toast(`A different photo in ${to} already has the name ${some(taken)}; skipped. Rename it and drop it again.`, 'err');
+  if (others) toast(`Skipped ${others} file${others > 1 ? 's' : ''} that ${others > 1 ? "aren't photos" : "isn't a photo"}`);
+  sig = ''; await load(); if (added) usageSoon(0);
+}
 
 load(); loadUsage();
 setInterval(() => { if (document.visibilityState === 'visible' && zoomAt === null) loadUsage(); }, 15000);

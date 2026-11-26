@@ -44,13 +44,15 @@ A preview shows exactly the frames the full render will have there, only smaller
 
 In the dashboard, click **Sort photos…** (or go to http://127.0.0.1:8778/sort).
 
-- **Bringing photos in:** they land in `images/inbox/`, which the film doesn't use. You can bring them in three ways:
+- **Bringing photos in:** they land in `images/inbox/`, which the film doesn't use. You can bring them in four ways:
+  - **Drag from Finder:** drag photos or whole folders onto the page. While you drag, a row of pools appears at the bottom. Drop on one to add the photos straight to that pool, or drop on the grid to add them to the tab you're on (the inbox, unless you're looking at a pool). Files that aren't photos are skipped. So is a photo the sorter already has (same name and size). A different photo with a name that's already taken in that pool is skipped too: rename it and drop it again.
   - **Import Photos selection:** select photos in the Photos app first, then click this.
   - **Import album…:** a whole Photos album.
   - **Add files…:** pick files, or copy them into `images/inbox/` in Finder.
 
-  Videos are skipped, and a photo you imported before isn't imported again. The first time, macOS may ask whether the dashboard can control Photos; click OK.
+  Videos are skipped, and a photo you imported before isn't imported again. The first time, macOS may ask whether the dashboard can control Photos; click OK. To drag from the Photos app, drag the photos to the Desktop first, then onto the page (or use *Import Photos selection*). The Claude app's browser pane doesn't take drags from Finder; use Safari or Chrome for that.
 - **Sorting:** each photo shows the automatic **suggestion** (→ bright / texture / dark), which you can ignore. The thumbnails show the 16:9 crop the film uses. *whole* shows the full photo.
+  - **Drag** a photo onto a pool to move it there: onto the row of pools that appears at the bottom, a tab at the top, or a pool's card in the usage strip. Dragging a selected photo moves everything selected. Esc cancels the drag.
   - Click selects, ⇧-click selects a range, ⌘-click adds to the selection, ⌘A selects all.
   - **1** bright · **2** texture · **3** dark · **S** take the suggestion · **X** reject · **0** back to the inbox.
   - Space (or a double-click) opens one photo large, with what the film crops away dimmed. There, 1/2/3/S/X move it and go on to the next, and ← → step through. That's the quickest way through an inbox.
@@ -93,7 +95,7 @@ The copies are JPEGs up to 2560 px with the EXIF removed, so no GPS location tra
 
 This opens http://127.0.0.1:8778 in your browser. Stop it with Ctrl-C in that terminal. One page holds everything:
 
-- **Inputs:** click *Add…* on the track, bright, texture or dark box to open the macOS file chooser (Cmd-click or Cmd-A picks several images). The files are copied in and your originals stay where they are. In Safari or Chrome you can also drag files from Finder onto a box. The Claude app's browser pane doesn't accept drags from Finder, so use *Add…* there. To swap files:
+- **Inputs:** click *Add…* on the track, bright, texture or dark box to open the macOS file chooser (Cmd-click or Cmd-A picks several images). The files are copied in and your originals stay where they are. In Safari or Chrome you can also drag files, or a whole folder of photos, from Finder onto a box; files that aren't photos are skipped, and the track box takes one audio file at a time. The Claude app's browser pane doesn't accept drags from Finder, so use *Add…* there. To move a photo to another pool, drag its thumbnail onto that pool's box (this works in the pane too). To swap files:
   - **Track:** click *Replace…* on the track box, or drop a new track on it.
   - **Photo:** click a thumbnail, then *Replace…*. The new photo goes into that pool with its own name.
   - **Same name:** adding a photo whose name is already in the pool offers to replace it.
@@ -159,6 +161,6 @@ That analyses the track, renders the full film, a `--debug` film and a 13-17 s p
 
 ## Code
 
-`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html` (`./film dashboard`), `__main__.py` (the `./film` command).
+`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html`, `web/sort.html` and `web/drag.js` (`./film dashboard`), `__main__.py` (the `./film` command).
 
 Speed: about 190 frames/s at 1080p on an Apple M5 Pro, so a 3-minute film takes about 25 s.

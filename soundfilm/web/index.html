@@ -111,7 +111,15 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; pa
 .drop .sub { font: 11.5px var(--mono); color: var(--faint); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drop a { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; max-height: 118px; overflow: auto; }
-.thumbs img { height: 36px; border-radius: 3px; display: block; background: #000; cursor: zoom-in; }
+.thumbs img { height: 36px; border-radius: 3px; display: block; background: #000; cursor: grab; -webkit-user-drag: none; }
+.thumbs img.lifted { opacity: .3; }
+body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.dragghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(14px, 12px); }
+.dragghost .pile img { display: block; height: 62px; border-radius: 5px; border: 1.5px solid rgba(255, 255, 255, .75);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .65); background: #000; }
+.dragghost .to { display: inline-block; margin-top: 7px; padding: 4px 8px; border-radius: 6px; background: rgba(0, 0, 0, .85);
+  font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.dragghost .to b { color: var(--c); font-weight: 600; }
 
 /* activity */
 .job { padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; }
@@ -338,6 +346,7 @@ textarea.cfg { width: 100%; height: 460px; resize: vertical; background: #0b0d0b
 </div>
 <div class="toasts" id="toasts"></div>
 
+<script src="/web/drag.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -407,8 +416,8 @@ function drawInputs() {
       <div class="dh"><span class="dot" style="background:${POOL_COLOR[k]}"></span><span class="name">${k}</span>
         <span class="note">${POOL_HINT[k]}</span><span class="grow"></span><span class="count">${d.count}</span>
         <button class="btn sm" data-pick="${k}">Add…</button></div>
-      <div class="sub">${esc(d.folder)}/ · jpg / png / heic</div>
-      ${d.files.length ? `<div class="thumbs">${d.files.map(f => `<img loading="lazy" src="${f.thumb}" data-ref="${k}/${esc(f.name)}" title="${esc(f.name)}: click to view or replace" alt="">`).join('')}</div>` : ''}
+      <div class="sub">${esc(d.folder)}/ · drop photos or folders here · drag a thumbnail to another pool to move it</div>
+      ${d.files.length ? `<div class="thumbs">${d.files.map(f => `<img loading="lazy" draggable="false" src="${f.thumb}" data-ref="${k}/${esc(f.name)}" title="${esc(f.name)}: click to view or replace, drag to another pool to move" alt="">`).join('')}</div>` : ''}
     </div>`;
   }
   setHTML($('#inputs'), html);
@@ -620,15 +629,23 @@ function report(to, added, kept) {
 
 // ---------------------------------------------------------------- uploads
 async function upload(to, files) {
-  const added = [], kept = [], conflicts = [];
+  const added = [], kept = [], conflicts = [], skipped = [];
+  if (!files.length) { toast('Nothing came through. From the Photos app, drag the photos to the Desktop first.', 'warn'); return; }
+  if (to === 'audio' && files.length > 1) {
+    const aud = files.filter(f => AUDIO_EXTS.includes(SF.extOf(f.name)));
+    if (aud.length !== 1) { toast(aud.length ? 'One track at a time: drop a single audio file on the track box.' : 'None of that is an audio file this reads.', 'err'); return; }
+    files = aud;
+  }
   const send = async (f, replace) => {
     const r = await fetch(`/api/upload?to=${encodeURIComponent(to)}&name=${encodeURIComponent(f.name)}${replace ? '&replace=1' : ''}`, {method: 'POST', body: f});
     const j = await r.json().catch(() => ({error: r.statusText}));
     if (r.status === 409 && j.conflict && !replace) { conflicts.push({file: f, name: f.name, replaces: j.replaces}); return; }
+    if (r.status === 415 && files.length > 1) { skipped.push(f.name); return; }
     if (!r.ok) throw new Error(j.error || r.statusText);
     added.push(j.saved); kept.push(...(j.kept || []));
   };
   for (const f of files) { try { await send(f, false); } catch (e) { toast(e.message, 'err'); } }
+  if (skipped.length) toast(`Skipped ${skipped.length} file${skipped.length > 1 ? 's' : ''} that ${to === 'audio' ? "aren't audio" : skipped.length > 1 ? "aren't photos" : "isn't a photo"}`, 'warn');
   if (conflicts.length && await ask(conflictTitle(to, conflicts), conflictText(conflicts))) {
     for (const c of conflicts) { try { await send(c.file, true); } catch (e) { toast(e.message, 'err'); } }
   }
@@ -654,17 +671,33 @@ async function choose(to, btn, old = null) {
   if (btn) btn.disabled = false;
   refresh();
 }
-document.addEventListener('dragover', e => {
-  e.preventDefault();
-  document.querySelectorAll('.drop').forEach(d => d.classList.toggle('over', d.contains(e.target)));
+// Files and folders from Finder: onto the track box or a pool box.
+const AUDIO_EXTS = ['.wav', '.aif', '.aiff', '.flac', '.mp3', '.m4a', '.aac', '.ogg'];          // analysis.AUDIO_EXTS
+window.SF && SF.fileDrops({
+  litClass: 'over',
+  where: el => { const d = el && el.closest('.drop[data-to]'); return d ? d.dataset.to : null; },
+  light: to => document.querySelector(`.drop[data-to="${to}"]`),
+  refused: () => toast('Drop onto the track box or one of the image boxes.', 'warn'),
+  drop: (to, files) => upload(to, files),
 });
-document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.querySelectorAll('.drop').forEach(d => d.classList.remove('over')); });
-document.addEventListener('drop', e => {
-  e.preventDefault();
-  document.querySelectorAll('.drop').forEach(d => d.classList.remove('over'));
-  const d = e.target.closest('.drop');
-  if (!d) { toast('Drop onto the track box or one of the image boxes.', 'warn'); return; }
-  upload(d.dataset.to, [...e.dataTransfer.files]);
+// A photo already in a pool: drag its thumbnail onto another pool box to move it there.
+window.SF && SF.pointerDrag({
+  root: $('#inputs'), items: '.thumbs img[data-ref]', targets: '.drop[data-to]', litClass: 'over',
+  start(el) {
+    el.classList.add('lifted');
+    return {el, ref: el.dataset.ref, from: el.dataset.ref.split('/')[0], ghost: `<div class="pile"><img src="${esc(el.src)}" alt=""></div><div class="to"></div>`};
+  },
+  accepts: (t, d) => t.dataset.to in POOL_COLOR && t.dataset.to !== d.from,
+  label: t => t ? `move to <b style="--c:${POOL_COLOR[t.dataset.to]}">${t.dataset.to}</b>` : 'drop on another pool',
+  async drop(t, d) {
+    try {
+      const r = await api('/api/move', {refs: [d.ref], to: t.dataset.to});
+      for (const e of r.errors) toast(e, 'err');
+      if (r.moved.length) { toast(`Moved ${d.ref.split('/').pop()} to ${t.dataset.to}`); simulateSoon(0); }
+    } catch (e) { toast(e.message, 'err'); }
+    refresh();
+  },
+  end(d) { d.el.classList.remove('lifted'); },
 });
 
 // ---------------------------------------------------------------- config editor

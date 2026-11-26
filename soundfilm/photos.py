@@ -230,7 +230,8 @@ def listing(root: Path, cfg: dict) -> dict:
     for where, ps in found.items():
         for p in ps:
             s = have.get(_key(p))
-            rows.append(dict(ref=f"{where}/{p.name}", where=where, name=p.name, mtime=p.stat().st_mtime,
+            st = p.stat()
+            rows.append(dict(ref=f"{where}/{p.name}", where=where, name=p.name, mtime=st.st_mtime, size=st.st_size,
                              crop=crop_of(root, cfg, p, crops),
                              **({"brightness": s["brightness"], "texture": s["texture"]} if s else {})))
     scored = [r for r in rows if "texture" in r and r["where"] != "rejected"]

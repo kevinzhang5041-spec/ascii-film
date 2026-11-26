@@ -776,6 +776,7 @@ def photo_listing() -> dict:
     if out["unscored"] and not JOBS.active("score"):
         JOBS.submit("score", f"score {out['unscored']} photos for suggestions", _score_job)
     out["scoring"] = JOBS.active("score")
+    out["exts"] = sorted(af.IMAGE_EXTS)
     return out
 
 
@@ -886,6 +887,9 @@ class Handler(ascii_dashboard.Handler):
                     values = None                         # the editor still opens, to fix it
                 return self._json({"path": str(p), "text": text, "mtime": _mtime(p), "values": values,
                                    "defaults": config.defaults()})
+            m = re.fullmatch(r"/web/([\w-]+\.js)", path)
+            if m and (WEB / m.group(1)).is_file():
+                return self._send(200, (WEB / m.group(1)).read_bytes(), "text/javascript; charset=utf-8")
             if path in ("/sort", "/sort.html"):
                 return self._send(200, (WEB / "sort.html").read_bytes(), "text/html; charset=utf-8")
             if path == "/api/photos":

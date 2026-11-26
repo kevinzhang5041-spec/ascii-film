@@ -3,6 +3,7 @@
 # This is an allow-list: a new file is private until it's added below.
 /*
 !/.gitignore
+!/LICENSE
 !/README.md
 !/SOUNDFILM.md
 !/ascii

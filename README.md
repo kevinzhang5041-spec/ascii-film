@@ -129,3 +129,7 @@ Output settings: `--fps 30`, `--size 1920` (long edge in pixels; portrait clips 
 - **Mixed orientation:** in the assembled film, portrait clips are pillarboxed inside the most common frame size. Use `./ascii assemble --size 1080x1920` for a vertical film.
 - **Too little footage:** if `output/` holds less than the length you ask for, assembly warns you and the film runs to the end of the footage.
 - **Speed:** each clip is split into 6 time segments that decode (in hardware), render and encode in parallel, joined frame-exactly. On an M5 Pro, 1080p30 iPhone footage renders at about 330–350 fps, so 3 minutes of clips take about 16 s. `--jobs N` sets the number of segments. Clips shorter than about 10 s render as one piece.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

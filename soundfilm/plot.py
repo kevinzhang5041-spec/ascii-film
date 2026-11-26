@@ -127,7 +127,9 @@ def for_root(root: Path, cfg: dict, an, span=None, log=print) -> Path:
     from . import score
     sc = None
     try:
-        sc = score.build_score(an, cfg, score.gather_pools(root, cfg, root / ".work"), cfg["seed"])
+        from .sets import sections_for
+        pools = score.gather_pools(root, cfg, root / ".work")
+        sc = score.build_score(an, cfg, pools, cfg["seed"], sections=sections_for(root, cfg, pools, an.fps, an.n))
     except SystemExit:
         pass                                            # no images yet: plot the sound only
     name = "analysis.png" if not span else f"analysis_{span[0]:g}-{span[1]:g}s.png"

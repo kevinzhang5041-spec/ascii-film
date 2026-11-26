@@ -32,7 +32,7 @@ import numpy as np
 import ascii_film as af
 import dashboard as ascii_dashboard          # the ./ascii dashboard: reuse its HTTP plumbing (video range requests)
 
-from . import analysis, config, photos, plot, render, score, verify
+from . import analysis, config, photos, plot, render, score, sets, verify
 
 WEB = Path(__file__).resolve().parent / "web"
 ROOT = Path(".")                              # set by serve()
@@ -752,9 +752,11 @@ def act_simulate(req: dict) -> dict:
         an = _sim_analysis(cfg)
         pools = score.gather_pools(ROOT, cfg, ROOT / ".work")
         views = photos.views_for(ROOT, cfg, pools)
-        sc = score.build_score(an, cfg, pools, int(cfg["seed"]), views)
-        out = {"stats": score_stats(sc), "onsets": len(an.onset_frames), "duration": an.duration}
+        sc = score.build_score(an, cfg, pools, int(cfg["seed"]), views, sets.sections_for(ROOT, cfg, pools, an.fps, an.n))
+        out = {"stats": score_stats(sc), "onsets": len(an.onset_frames), "duration": an.duration,
+               "warnings": sc.warnings}
         out["stats"]["usage"] = score.pool_usage(sc, pools, an.fps)["pools"]
+        out["stats"]["sections"] = sc.sections
         if req.get("look", True):
             out["look"] = _look(cfg, sc, float(req.get("t") or 0), views)
     return out
@@ -833,16 +835,112 @@ def usage_report() -> dict:
         return {"error": str(e)}
     if not files:
         return {"error": "No photos in the pools yet."}
-    key = json.dumps([str(cpath), _mtime(cpath), _mtime(base / "crops.json"), str(track), _mtime(track), files])
+    key = json.dumps([str(cpath), _mtime(cpath), _mtime(base / "crops.json"), sets.mtime(ROOT, cfg), str(track),
+                      _mtime(track), files])
     if _USAGE.get("key") != key:
         with _SIM_LOCK:
             an = _sim_analysis(cfg)
             pools = score.gather_pools(ROOT, cfg, ROOT / ".work")
-            sc = score.build_score(an, cfg, pools, int(cfg["seed"]), photos.views_for(ROOT, cfg, pools))
+            sc = score.build_score(an, cfg, pools, int(cfg["seed"]), photos.views_for(ROOT, cfg, pools),
+                                   sets.sections_for(ROOT, cfg, pools, an.fps, an.n))
             u = score.pool_usage(sc, pools, an.fps)
+            u["sections"], u["warnings"] = sc.sections, sc.warnings
         u["no_repeat_within"] = cfg["editing"]["no_repeat_within"]
         _USAGE.update(key=key, value=u)
     return _USAGE["value"]
+
+
+# ---- photo sets and track sections (soundfilm/sets.py) ----------------------------------------------------
+
+_ENV: dict = {}
+_SUGGEST: dict = {}
+
+
+def _envelope(an, cfg: dict, bins: int = 720) -> dict:
+    """The track at a glance for the sections timeline: per bin, the loudest moment (0-1) and the pool the
+    sound asks for there (b / t / d, '' when silent)."""
+    pl, sil = cfg["editing"]["pools"], cfg["editing"]["silence"]["threshold_db"]
+    key = (id(an), pl["bright_above"], pl["dark_below"], sil, bins)
+    if _ENV.get("key") != key:
+        rms, db, cent, e = an.f["rms_norm"], an.f["rms_db"], an.f["centroid"], an.f["rms"]
+        edges = np.linspace(0, an.n, min(bins, an.n) + 1).astype(int)
+        lvl, want = [], []
+        for a, b in zip(edges[:-1], edges[1:]):
+            b = max(b, a + 1)
+            lvl.append(round(float(rms[a:b].max()), 3))
+            if db[a:b].max() < sil:
+                want.append("")
+                continue
+            w = e[a:b]
+            c = float(np.average(cent[a:b], weights=w)) if w.sum() > 0 else float(cent[a:b].mean())
+            want.append("b" if c >= pl["bright_above"] else "d" if c < pl["dark_below"] else "t")
+        _ENV.update(key=key, value={"level": lvl, "want": "".join(w or "-" for w in want)})
+    return _ENV["value"]
+
+
+def sets_state() -> dict:
+    """Sets (with how many photos each has per folder), sections, and the track for the timeline."""
+    cfg, _, _ = load_cfg()
+    d = sets.load(ROOT, cfg)
+    cnt = sets.counts(ROOT, cfg, d)
+    out = {"sets": [dict(s, counts=cnt.get(s["name"], {})) for s in d["sets"]], "none": cnt[""],
+           "sections": d["sections"], "duration": None}
+    try:
+        an = _sim_analysis(cfg)
+        out.update(duration=an.duration, fps=an.fps, onsets=[round(float(t), 3) for t in an.onset_times],
+                   env=_envelope(an, cfg))
+    except (SystemExit, FileNotFoundError, RuntimeError) as e:
+        out["error"] = str(e)
+    return out
+
+
+def act_sets(req: dict) -> dict:
+    """{'op': 'create' | 'rename' | 'recolor' | 'remove', 'name', 'to', 'color'}"""
+    cfg, _, _ = load_cfg()
+    op, name = req.get("op"), str(req.get("name") or "")
+    if op == "create":
+        sets.create(ROOT, cfg, name)
+    elif op == "rename":
+        sets.rename(ROOT, cfg, name, str(req.get("to") or ""))
+    elif op == "recolor":
+        sets.recolor(ROOT, cfg, name, str(req.get("color") or ""))
+    elif op == "remove":
+        sets.remove(ROOT, cfg, name)
+    else:
+        raise ValueError("op must be create, rename, recolor or remove")
+    return sets_state()
+
+
+def act_members(req: dict) -> dict:
+    """{'refs': ['bright/IMG_1.jpg', ...], 'set': name, 'on': true (add) / false (take out)}"""
+    refs = req.get("refs") or []
+    if not isinstance(refs, list):
+        raise ValueError("refs must be a list")
+    return sets.set_members(ROOT, load_cfg()[0], [str(r) for r in refs], str(req.get("set") or ""),
+                            bool(req.get("on", True)))
+
+
+def act_sections(req: dict) -> dict:
+    """{'sections': [{start, sets, any_pool, label}, ...]}: replaces the sections."""
+    cfg, _, _ = load_cfg()
+    dur = None
+    with contextlib.suppress(Exception):
+        dur = _sim_analysis(cfg).duration
+    sets.save_sections(ROOT, cfg, req.get("sections") or [], dur)
+    return sets_state()
+
+
+def act_suggest(req: dict) -> dict:
+    """{'n': sections} -> {'starts': [seconds]}: where the track changes character (nothing is saved)."""
+    cfg, _, _ = load_cfg()
+    n = int(req.get("n") or 4)
+    if not 2 <= n <= 24:
+        raise ValueError("ask for 2 to 24 sections")
+    an = _sim_analysis(cfg)
+    key = (str(an.track), _mtime(an.track), n)
+    if key not in _SUGGEST:
+        _SUGGEST[key] = analysis.suggest_sections(an.track, n, an.onset_times)
+    return {"starts": _SUGGEST[key]}
 
 
 def edl_frames(video: str) -> dict:
@@ -863,7 +961,8 @@ def edl_frames(video: str) -> dict:
 ACTIONS = {"analyze": act_analyze, "plot": act_plot, "render": act_render, "verify": act_verify,
            "stills": act_stills, "config": act_save_config, "reveal": act_reveal, "choose": act_choose,
            "confirm": act_confirm, "tune": act_tune, "simulate": act_simulate, "move": act_move,
-           "import": act_import, "crop": act_crop}
+           "import": act_import, "crop": act_crop, "sets": act_sets, "members": act_members,
+           "sections": act_sections, "suggest": act_suggest}
 
 
 # --------------------------------------------------------------------------- HTTP
@@ -894,6 +993,8 @@ class Handler(ascii_dashboard.Handler):
                 return self._send(200, (WEB / "sort.html").read_bytes(), "text/html; charset=utf-8")
             if path == "/api/photos":
                 return self._json(photo_listing())
+            if path == "/api/sets":
+                return self._json(sets_state())
             if path == "/api/usage":
                 return self._json(usage_report())
             if path == "/api/albums":

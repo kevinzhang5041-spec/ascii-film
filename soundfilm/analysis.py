@@ -199,3 +199,54 @@ def load_or_analyze(root: Path, cfg: dict, force: bool = False, log=print) -> An
     data["key"] = key
     path.write_text(json.dumps(data, separators=(",", ":")))
     return Analysis(data)
+
+
+def suggest_sections(track: Path, k: int, onset_times=None, sr: int = 22050) -> list[float]:
+    """Where the track changes character: start times for k sections (the first is 0).
+
+    Timbre (20 MFCCs) and loudness, smoothed over about 2 s so single hits don't count, are compared with
+    themselves over time. At each moment a checkerboard kernel measures how different the next ~10 s are
+    from the last ~10 s (novelty). The k-1 highest novelty peaks, kept apart by a minimum spacing, become
+    the section starts, each moved onto the nearest onset within 1 s so the section begins on a cut."""
+    import librosa
+    from scipy.ndimage import uniform_filter1d
+    y = decode_audio(track, sr)
+    hop, nfft = 4096, 8192
+    step = hop / sr
+    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=nfft, hop_length=hop, n_mels=64)
+    mfcc = librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=20)
+    loud = np.log(librosa.feature.rms(y=y, frame_length=nfft, hop_length=hop) + 1e-6)
+    z = lambda m: (m - m.mean(axis=1, keepdims=True)) / (m.std(axis=1, keepdims=True) + 1e-9)
+    X = uniform_filter1d(np.vstack([z(mfcc), 2.0 * z(loud)]), size=max(3, int(round(2.0 / step))), axis=1)
+    X = X / (np.linalg.norm(X, axis=0, keepdims=True) + 1e-9)
+    S = X.T @ X                                             # self-similarity, cosine
+    T = S.shape[0]
+    L = max(4, min(int(round(10.0 / step)), T // 4))        # half the kernel: ~10 s
+    g = np.exp(-0.5 * (np.linspace(-1, 1, 2 * L) / 0.5) ** 2)
+    sign = np.sign(np.linspace(-1, 1, 2 * L) + 1e-9)
+    kern = np.outer(g, g) * np.outer(sign, sign)            # +1 within past / within future, -1 across
+    nov = np.zeros(T)
+    for t in range(L, T - L):
+        nov[t] = float((S[t - L:t + L, t - L:t + L] * kern).sum())
+    nov = np.maximum(nov, 0)
+    dur = len(y) / sr
+    k = int(max(2, k))
+    gap = max(4.0, dur / (k * 2.5)) / step                  # boundaries at least this far apart (frames)
+    picks = []
+    order = np.argsort(-nov)
+    for t in order:
+        if len(picks) >= k - 1 or nov[t] <= 0:
+            break
+        if all(abs(t - u) >= gap for u in picks):
+            picks.append(int(t))
+    times = sorted(t * step for t in picks)
+    ons = np.asarray(onset_times if onset_times is not None else [], float)
+    out = [0.0]
+    for t in times:
+        if len(ons):
+            j = int(np.argmin(np.abs(ons - t)))
+            if abs(ons[j] - t) <= 1.0:
+                t = float(ons[j])
+        if t - out[-1] >= 1.0:
+            out.append(round(t, 3))
+    return out

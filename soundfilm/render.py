@@ -107,8 +107,13 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     cache = root / ".work"
     pools = score.gather_pools(root, cfg, cache)
     from .photos import views_for
+    from .sets import sections_for
     views = views_for(root, cfg, pools)                # your hand crops (images/crops.json)
-    sc = score.build_score(an, cfg, pools, seed, views)
+    sections = sections_for(root, cfg, pools, an.fps, an.n)   # which photos each part of the track uses
+    if sections:
+        log(f"{len(sections)} sections: " + ", ".join(f"{s['label']} from {s['start'] / an.fps:.1f}s"
+                                                     for s in sections))
+    sc = score.build_score(an, cfg, pools, seed, views, sections)
     for w in sc.warnings:
         log("warning: " + w)
 

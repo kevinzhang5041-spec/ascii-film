@@ -70,6 +70,25 @@ In the dashboard, click **Sort photos…** (or go to http://127.0.0.1:8778/sort)
 
   The crop is saved in `images/crops.json`, and the photo file itself is never changed. Cropped photos get a ✂ in the grid, their thumbnails show your crop, and the photo panel beside the player outlines it. The film then uses your crop instead of the centre of the photo. Cropped photos skip the random crop/zoom, so they're shown exactly as you framed them; to change that, untick **keep my crops exact** in Tune → Treatments.
 
+### Sections: different photos for different parts of the track
+
+You can split the track into **sections** and give each one its own photos:
+
+1. **Make sets** of photos. A set is a named group, like "faces" or "woods". A photo stays in its pool (bright / texture / dark), can be in several sets, and keeps its sets when you move it.
+   - **Make a set:** *+ New set* in the sorter's set row, or the *new set name* field under the Sections panel.
+   - **Tag photos:** drag photos onto a set's chip (or onto a set in the row that appears at the bottom while you drag). Or select photos and press **⇧1**…**⇧9** to put them in or out of set 1-9, or use the *＋ set…* / *− set…* menus. In the large view, click a set's chip.
+   - **Filter:** click a set's chip to show only its photos. *in no set* shows the rest; *any* shows everything again.
+2. **Mark the sections** in the dashboard's **Sections** panel. The timeline shows the whole track: bar height is loudness, colour is the pool the sound asks for there (yellow bright, green texture, blue dark).
+   - **Split:** double-click the timeline where a new section should start, or click *Split at playhead* while a render plays.
+   - **Move a boundary:** drag it. It snaps to the nearest onset so the section starts on a cut; hold ⌥ while dragging to place it freely.
+   - **Suggest sections…** splits the track where its sound changes most (2-10 sections). You can move the boundaries afterwards.
+   - *Merge ←* removes a boundary. *One section* goes back to a single section that uses every photo.
+3. **Give each section its sets:** tick them on its row. A section with no sets ticked uses every photo.
+   - Inside a section the sound still chooses bright / texture / dark from that section's photos. Tick *any pool* to ignore that and use any photo from its sets, whatever the sound.
+   - If a section's sets have no photo in the pool the sound asks for, the nearest pool stands in. If they have none in the pools at all, the section uses every photo. Its row says so in amber, and so does the render.
+
+Each row shows the section's cuts, its photos per pool and how often each one comes back (green / amber / red, as in the sorter). *Preview this* sets the preview range to the section. Everything saves straight away, to `images/sets.json`, and the next render follows it. Sections don't change `config.yaml`, so a saved look in `looks/` works with any sections. In a `--debug` render the overlay names the section, and the EDL has a `section` column.
+
 ### Sorting photos automatically
 
 ```bash
@@ -103,6 +122,7 @@ This opens http://127.0.0.1:8778 in your browser. Stop it with Ctrl-C in that te
   The page always asks first. The old file is moved to `.work/replaced/<date-time>/` in the project folder, not deleted, so you can move it back. After a new track arrives, the dashboard re-analyses it automatically.
 - **Photo panel:** *Show photo* opens a panel beside the player with the real photo behind the frame on screen. It follows the video frame by frame and outlines the part of the photo the film shows. Fading and black frames dim it. Renders made before this panel existed show the photo, but their outline only marks the centre crop.
 - **Player:** set the preview range, then *Render preview* or *Render full film*. The debug overlay, the seed, and a sync check after rendering are optional. A finished render opens in the player.
+- **Sections:** split the track into parts and choose which photo sets each part uses (see *Sections* above).
 - **Analysis:** *Analyse* draws `analysis.png`. *Plot preview range* zooms the plot to the preview range.
 - **Renders:** play, verify, export stills and open the contact sheet for any render. *sync report* shows the verify results.
 - **Tune:** sliders, switches and colour pickers for every rule: cuts and timing, photo pools, resolution, character sets, colour, brightness and the treatments. Hover over a label for what it does. Before you save, the right side shows the effect on the whole film: cuts, flashes, the cuts per pool, how much is black, character sets, columns and colour. Each changed number also shows what it was. It also draws the first cuts from the preview start with the new settings. Changed rows turn amber, ↺ puts one back to its default, and *Discard* drops all unsaved changes. *Save* writes only the changed values into `config.yaml`, leaving comments and layout alone, and keeps the old version. *Save & render preview* saves, then renders the preview range. Onset sensitivity re-analyses the track, so its numbers take a second or two.
@@ -161,6 +181,6 @@ That analyses the track, renders the full film, a `--debug` film and a 13-17 s p
 
 ## Code
 
-`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html`, `web/sort.html` and `web/drag.js` (`./film dashboard`), `__main__.py` (the `./film` command).
+`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `sets.py` (photo sets and track sections), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html`, `web/sort.html` and `web/drag.js` (`./film dashboard`), `__main__.py` (the `./film` command).
 
 Speed: about 190 frames/s at 1080p on an Apple M5 Pro, so a 3-minute film takes about 25 s.

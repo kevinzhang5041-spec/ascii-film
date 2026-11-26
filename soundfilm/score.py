@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import csv
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -81,26 +81,33 @@ class Score:
     shots: list[dict]          # one per cut
     bands: list[dict]          # ascii.charset.bands, as configured
     warnings: list[str]
+    sections: list[dict] = field(default_factory=list)   # per section: frames, sets, photos, cuts, stand-ins
 
 
 class _Picker:
-    """Random image from a pool, never one used in the last `n` cuts (falls back to least recently used)."""
+    """Random image from a pool, never one used in the last `n` cuts (falls back to least recently used).
+    `allow` (a set of display names, or None for all) limits it to a section's photos; pool None picks from
+    all three pools together."""
 
     def __init__(self, pools, n, rng):
         self.pools, self.rng = pools, rng
         self.recent = deque(maxlen=max(0, n)) if n else deque(maxlen=0)
         self.warned = set()
 
-    def pool_for(self, want: str) -> str:
+    def items(self, pool, allow=None):
+        items = self.pools[pool] if pool else [it for p in POOLS for it in self.pools.get(p, [])]
+        return items if allow is None else [it for it in items if it[0] in allow]
+
+    def pool_for(self, want: str, allow=None) -> str:
         order = {"bright": ("bright", "texture", "dark"), "texture": ("texture", "bright", "dark"),
                  "dark": ("dark", "texture", "bright")}[want]
-        return next(p for p in order if self.pools[p])
+        return next(p for p in order if self.items(p, allow))
 
-    def pick(self, pool: str, exclude=(), remember=True, rng=None):
-        items = self.pools[pool]
+    def pick(self, pool: str | None, exclude=(), remember=True, rng=None, allow=None):
+        items = self.items(pool, allow)
         cands = [it for it in items if it[1] not in self.recent and it[1] not in exclude]
         if not cands:
-            self.warned.add(pool)
+            self.warned.add((pool or "all") if allow is None else "a section")
             seen = list(self.recent)
             cands = sorted((it for it in items if it[1] not in exclude) or items,
                            key=lambda it: seen.index(it[1]) if it[1] in seen else -1)[:1]
@@ -110,8 +117,10 @@ class _Picker:
         return it
 
 
-def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None) -> Score:
-    """views: {photo path: hand crop} from images/crops.json (photos.views_for)."""
+def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None,
+                sections: list[dict] | None = None) -> Score:
+    """views: {photo path: hand crop} from images/crops.json (photos.views_for).
+    sections: from sets.sections_for: which photos each stretch of the track may use (None: all, everywhere)."""
     views = views or {}
     fps, n = an.fps, an.n
     ed, asc, tr = cfg["editing"], cfg["ascii"], cfg["treatments"]
@@ -181,6 +190,17 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
 
     exact = bool(tr["crop_zoom"].get("respect_hand_crops", True))
 
+    # sections: frame -> section; what each section's sets hold in each pool
+    sec_of = np.zeros(n, int)
+    secs = []
+    for s in sections or []:
+        sec_of[s["start"]:s["end"]] = s["index"]
+        have = {p: len(picker.items(p, s["allow"])) for p in POOLS}
+        secs.append(dict(index=s["index"], label=s["label"], sets=s["sets"], any_pool=s["any_pool"],
+                         start_s=round(s["start"] / fps, 3), end_s=round(s["end"] / fps, 3), photos=have,
+                         empty=s["allow"] is not None and not any(have.values()), cuts=0, stand_in=0,
+                         wanted={p: 0 for p in POOLS}))
+
     def crop(rng=rng_crop, path=None):
         z = 1.0 + rng.random() * 2 * tr["crop_zoom"]["intensity"]
         cx, cy = rng.uniform(0.5 / z, 1 - 0.5 / z), rng.uniform(0.5 / z, 1 - 0.5 / z)
@@ -197,14 +217,26 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
             win = slice(k, k + max(1, pl["centroid_window"]))
             c = float(np.average(cent[win], weights=energy[win])) if energy[win].sum() > 0 else float(cent[k])
             want = "bright" if c >= pl["bright_above"] else ("dark" if c < pl["dark_below"] else "texture")
-            pool = picker.pool_for(want)
-            name, path = picker.pick(pool)
+            sec = secs[sec_of[k]] if secs else None
+            allow = sections[sec["index"]]["allow"] if sec and not sec["empty"] else None
+            if sec and sec["any_pool"]:                   # the section ignores bright/texture/dark
+                name, path = picker.pick(None, allow=allow)
+                pool = name.split("/")[0]
+            else:
+                pool = picker.pool_for(want, allow)
+                name, path = picker.pick(pool, allow=allow)
+            if sec:
+                sec["cuts"] += 1
+                sec["wanted"][want] += 1
+                sec["stand_in"] += int(pool != want and not sec["any_pool"])
             layer = None
             if on("layering") and density[k] >= ly["onsets_per_sec"]:
-                lname, lpath = picker.pick(pool, exclude={path}, remember=False, rng=rng_layer)
+                lname, lpath = picker.pick(None if sec and sec["any_pool"] else pool, exclude={path},
+                                           remember=False, rng=rng_layer, allow=allow)
                 layer = dict(name=lname, path=lpath, crop=crop(rng_layer, lpath), alpha=float(ly["intensity"]))
             hue = float(rng_hue.uniform(-1, 1) * tr["color_shift"]["intensity"] * 180) if on("color_shift") else 0.0
             shot = dict(id=len(shots), frame=k, pool=pool, wanted=want, name=name, path=path, strength=s,
+                        section=sec["index"] if sec else -1,
                         loud=float(max(rms[k:k + 2])),     # the cut and its hold are exposed for the onset itself
                         hold=int(round(lerp(hold_cfg["min_frames"], hold_cfg["max_frames"],
                                             s ** hold_cfg["curve"]))),
@@ -214,8 +246,8 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
             shots.append(shot)
             since, vis, kind = 0, 1.0, "cut"
             reason = f"onset s={s:.2f} -> hold {shot['hold']}f, gap {shot['gap']}f"
-            if want != pool:
-                reason += f" ({want}/ empty)"
+            if want != pool and not (sec and sec["any_pool"]):
+                reason += f" ({want}/ empty)" if not sec or sec["empty"] else f" (no {want} in section {sec['label']})"
         elif shot is None:
             kind = "silence" if silent[k] else "black"
             reason = "silence" if silent[k] else "no onset yet / faded out"
@@ -242,6 +274,7 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
             lvl = max(lvl, shot["loud"], float(ex.get("cut_floor", 0.0)))
         rows.append(dict(
             frame=k, time=round(k / fps, 4), kind=kind, reason=reason, onset=k in onset_at,
+            section=secs[sec_of[k]]["label"] if secs else "",
             strength=round(onset_at.get(k, 0.0), 3),
             shot=shot["id"] if live else -1,
             image=shot["path"] if live else None, name=shot["name"] if live else "",
@@ -266,11 +299,23 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
         ))
 
     warnings = [f"images/{p}/ has too few images for no_repeat_within={ed['no_repeat_within']}: "
-                f"some images repeat sooner" for p in sorted(picker.warned)]
-    return Score(rows, shots, bands, warnings)
+                f"some images repeat sooner" for p in sorted(picker.warned) if p in POOLS]
+    if "a section" in picker.warned:
+        warnings.append(f"some sections' sets have too few photos for no_repeat_within={ed['no_repeat_within']}: "
+                        f"photos repeat sooner there")
+    for s in secs:
+        if s["empty"] and s["cuts"]:
+            warnings.append(f"section {s['label']}: its sets have no photos in bright/texture/dark, "
+                            f"so its {s['cuts']} cuts used every photo")
+        elif s["stand_in"]:
+            short = [p for p in POOLS if s["wanted"][p] and not s["photos"][p]]
+            warnings.append(f"section {s['label']}: its sets have no {'/'.join(short)} photos, so "
+                            f"{s['stand_in']} of its {s['cuts']} cuts used another pool")
+    return Score(rows, shots, bands, warnings, secs)
 
 
-EDL_COLUMNS = ["frame", "time", "kind", "onset", "strength", "shot", "pool", "name", "view", "crop", "layer_name",
+EDL_COLUMNS = ["frame", "time", "section", "kind", "onset", "strength", "shot", "pool", "name", "view", "crop",
+               "layer_name",
                "layer_alpha",
                "flash", "hold", "gain", "cols", "band", "mix", "expo", "cjit", "rms", "rms_db", "centroid",
                "centroid_hz", "flatness", "density", "reason"]

@@ -74,7 +74,8 @@ class DebugOverlay:
              0.58, (230, 230, 230), 1),
             (f"IMG  {r['name'] or '-'}" + (f"  + {r['layer_name']} x{r['layer_alpha']:.2f} (dense "
                                             f"{r['density']:.0f}/s)" if r["layer_name"] else "")
-             + (f"  gain {r['gain']:.2f}" if r["image"] else ""), 0.58, (230, 230, 230), 1),
+             + (f"  gain {r['gain']:.2f}" if r["image"] else "")
+             + (f"   section {r['section']}" if r.get("section") else ""), 0.58, (230, 230, 230), 1),
         ]
         pad, lh = int(14 * s), int(34 * s)
         w = int(min(self.W - 2 * pad, 1180 * s))

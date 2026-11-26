@@ -81,6 +81,8 @@ def move(root: Path, cfg: dict, refs: list[str], to: str) -> dict:
             os.rename(src, target)                  # same disk: instant, and never replaces (name is free)
             if target.name != src.name:
                 rekey_crop(root, cfg, old_key, crop_key(target))
+                from . import sets
+                sets.rekey(root, cfg, old_key, crop_key(target))
             moved.append([ref, f"{to}/{target.name}"])
         except (FileNotFoundError, ValueError, OSError) as e:
             errors.append(str(e))
@@ -223,8 +225,10 @@ def score_photos(root: Path, paths: list[Path], progress=None) -> int:
 
 def listing(root: Path, cfg: dict) -> dict:
     """Every photo, where it is, its scores and the automatic suggestion."""
+    from . import sets
     have = load_scores(root)
     crops = load_crops(root, cfg)
+    groups = sets.load(root, cfg)
     found = all_photos(root, cfg)
     rows = []
     for where, ps in found.items():
@@ -232,14 +236,14 @@ def listing(root: Path, cfg: dict) -> dict:
             s = have.get(_key(p))
             st = p.stat()
             rows.append(dict(ref=f"{where}/{p.name}", where=where, name=p.name, mtime=st.st_mtime, size=st.st_size,
-                             crop=crop_of(root, cfg, p, crops),
+                             crop=crop_of(root, cfg, p, crops), sets=sets.members_of(groups, p),
                              **({"brightness": s["brightness"], "texture": s["texture"]} if s else {})))
     scored = [r for r in rows if "texture" in r and r["where"] != "rejected"]
     if scored:
         sortimages.assign(scored, 1 / 3)                # sets r["pool"]
         for r in scored:
             r["suggest"] = r.pop("pool")
-    return {"photos": rows, "counts": {w: len(found[w]) for w in FOLDERS},
+    return {"photos": rows, "counts": {w: len(found[w]) for w in FOLDERS}, "sets": groups["sets"],
             "unscored": sum("texture" not in r for r in rows)}
 
 

@@ -226,6 +226,63 @@ textarea.cfg { width: 100%; height: 460px; resize: vertical; background: #0b0d0b
 .toast { background: #1b201b; border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 8px;
   padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 30px rgba(0, 0, 0, .4); }
 .toast.err { border-left-color: var(--err); } .toast.warn { border-left-color: var(--warn); }
+/* sections: which photos each part of the track uses */
+.tl { position: relative; height: 84px; border-radius: 8px; background: #0b0d0b; border: 1px solid var(--line); overflow: hidden;
+  user-select: none; -webkit-user-select: none; touch-action: none; cursor: crosshair; }
+.tl canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tlsec { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--c) 9%, transparent); }
+.tlsec + .tlsec { border-left: 1px solid rgba(255, 255, 255, .14); }
+.tlsec .band { position: absolute; left: 0; right: 0; top: 0; height: 5px; display: flex; }
+.tlsec .band i { flex: 1; }
+.tlsec .lab { position: absolute; left: 6px; top: 10px; max-width: calc(100% - 12px); padding: 2px 6px; border-radius: 4px; background: rgba(0, 0, 0, .66);
+  font: 11px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.tlsec.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.tlh { position: absolute; top: 0; bottom: 0; width: 15px; margin-left: -7px; cursor: ew-resize; z-index: 2; }
+.tlh::after { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 3px; border-radius: 2px; background: var(--text); opacity: .55; }
+.tlh:hover::after, .tlh.drag::after { opacity: 1; background: var(--accent); }
+.tlhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ff5a5a; pointer-events: none; z-index: 3; }
+.tlaxis { position: relative; height: 18px; font: 10.5px var(--mono); color: var(--faint); }
+.tlaxis span { position: absolute; top: 3px; transform: translateX(-50%); white-space: nowrap; }
+.tlaxis span:first-child { transform: none; }
+.tlkey { display: flex; gap: 14px; flex-wrap: wrap; font: 11px var(--mono); color: var(--faint); margin-top: 2px; }
+.tlkey i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.seclist { display: grid; gap: 6px; margin-top: 12px; }
+.secrow { display: grid; grid-template-columns: 24px 170px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
+.secrow.sel { border-color: #4f5a4f; }
+.secrow .num { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font: 600 11.5px var(--mono);
+  background: var(--c); color: #0c0e0c; }
+.secrow.now .num { outline: 2px solid #ff5a5a; outline-offset: 2px; }
+.secrow .when { font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.secrow .when b { color: var(--text); font-weight: 500; }
+.secrow .lab { margin-top: 5px; padding: 4px 7px; font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.schip { background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 3px 10px; font: 12px var(--mono);
+  color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.schip .d { width: 8px; height: 8px; border-radius: 2px; background: var(--c, var(--muted)); }
+.schip.on { background: color-mix(in srgb, var(--c) 20%, transparent); color: var(--text); border-color: var(--c); }
+.secrow .info { font: 11.5px var(--mono); color: var(--faint); margin-top: 6px; line-height: 1.6; }
+.secrow .info b { color: var(--muted); font-weight: 500; }
+.secrow .acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.secrow .chk { font-size: 11.5px; }
+.setlist { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 6px; }
+.setlist .sh { display: flex; gap: 10px; align-items: baseline; font: 11px var(--mono); color: var(--faint); }
+.setlist .sh b { font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.setlist .sh a { color: var(--accent); }
+.srow2 { display: grid; grid-template-columns: 26px minmax(90px, 180px) minmax(0, 1fr) auto; gap: 10px; align-items: center; font: 12px var(--mono); }
+.srow2 input[type=color] { width: 24px; height: 22px; padding: 0; border: 1px solid var(--line-2); border-radius: 5px; background: none; cursor: pointer; }
+.srow2 .nm { cursor: text; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow2 .nm:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+.srow2 .cnt { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow2 .in { padding: 3px 7px; font-size: 12px; }
+.newset { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.newset .in { max-width: 260px; padding: 5px 8px; font-size: 12px; }
+@media (max-width: 900px) {
+  .secrow { grid-template-columns: 24px minmax(0, 1fr); }
+  .secrow > :nth-child(3), .secrow > :nth-child(4) { grid-column: 2; }
+  .secrow .acts { justify-content: flex-start; }
+  .srow2 { grid-template-columns: 26px minmax(0, 1fr) auto; } .srow2 .cnt { grid-column: 2 / -1; grid-row: 2; }
+}
 </style>
 </head>
 <body>
@@ -278,6 +335,22 @@ textarea.cfg { width: 100%; height: 460px; resize: vertical; background: #0b0d0b
       <pre class="log" id="log" hidden></pre>
     </section>
   </div>
+
+  <section class="panel wide" id="secPanel">
+    <div class="h">
+      <h2>Sections</h2><span class="note">give each part of the track its own photos</span>
+      <div class="grow"></div>
+      <span class="note" id="secNote"></span>
+      <button class="btn sm" id="secSplit" title="Start a new section at the playhead (or double-click the timeline)">Split at playhead</button>
+      <select class="in" id="secSuggest" style="width:auto;padding:4px 8px;font-size:12px" title="Find where the track changes character">
+        <option value="">Suggest sections…</option>
+        <option value="2">2 sections</option><option value="3">3 sections</option><option value="4">4 sections</option>
+        <option value="5">5 sections</option><option value="6">6 sections</option><option value="8">8 sections</option>
+        <option value="10">10 sections</option></select>
+      <button class="btn sm ghost" id="secReset" title="Back to one section that uses every photo">One section</button>
+    </div>
+    <div id="secBody"><div class="note">Loading…</div></div>
+  </section>
 
   <section class="panel wide" id="tunePanel">
     <div class="h">
@@ -937,6 +1010,7 @@ async function simulate() {
     else $('#lookEmpty').textContent = 'No cuts after the preview start.';
     $('#lookCap').textContent = `first cuts from ${fmtT(t)} (the preview start), ${dirty ? 'with your unsaved changes' : 'as saved'}`;
     drawStats(r.stats, dirty ? savedStats : null);
+    secStats = r.stats.sections || null; if (SS && $('#seclist')) drawSecList();
   } catch (e) {
     if (seq !== simSeq) return;
     setHTML($('#tstats'), `<div class="note err" style="margin-top:10px">${esc(e.message)}</div>`);
@@ -1056,6 +1130,273 @@ function placePhoto(crop, view) {
   new ResizeObserver(() => { if (photoOpen && edl) placePhoto(edl.crop[lastIdx], viewRect(edl.view && edl.view[lastIdx])); }).observe($('#pbox'));
 })();
 setPhotoOpen(photoOpen);
+
+// ---------------------------------------------------------------- sections: which photos each part of the track uses
+// The timeline shows the track (bar height = loudness, colour = the pool the sound asks for). Each section runs
+// from its start to the next one's and draws its cuts from the sets you tick (none ticked: every photo). Drag a
+// boundary to move it (it snaps to the nearest onset; hold ⌥ not to), double-click to split, click to choose.
+// Everything is saved to images/sets.json straight away; renders and the numbers in Tune follow it.
+let SS = null, secs = [], secSel = 0, secStats = null, secSaveT = null, secDrag = null;
+const SEC_GAP = 0.25, WANTC = {b: '#ffd23c', t: '#6ed778', d: '#5a96ff'};
+const oneSection = () => [{start: 0, sets: [], any_pool: false, label: ''}];
+const secEnd = i => i + 1 < secs.length ? secs[i + 1].start : (SS && SS.duration) || 0;
+const secAt = t => { let i = 0; while (i + 1 < secs.length && secs[i + 1].start <= t) i++; return i; };
+const setOf = n => (SS && SS.sets || []).find(s => s.name === n);
+const secColor = s => (s.sets.length && setOf(s.sets[0])) ? setOf(s.sets[0]).color : '#6b736a';
+async function loadSets(force) {
+  try { applySets(await api('/api/sets'), force); }
+  catch (e) { setHTML($('#secBody'), `<div class="note err">${esc(e.message)}</div>`); }
+}
+function applySets(r, force) {
+  SS = r;
+  if (force || (!secDrag && !secSaveT)) secs = (r.sections && r.sections.length ? r.sections : oneSection()).map(s => ({...s, sets: [...(s.sets || [])]}));
+  secSel = Math.max(0, Math.min(secSel, secs.length - 1));
+  drawSections();
+}
+function snapT(t, free) {
+  t = Math.max(0, Math.min(t, (SS && SS.duration) || t));
+  const o = (SS && SS.onsets) || [];
+  if (free || !o.length) return Math.round(t * 1000) / 1000;
+  let lo = 0, hi = o.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (o[m] < t) lo = m + 1; else hi = m; }
+  const best = [o[lo], o[lo - 1]].filter(x => x !== undefined).sort((a, b) => Math.abs(a - t) - Math.abs(b - t))[0];
+  return Math.abs(best - t) <= 0.3 ? best : Math.round(t * 1000) / 1000;
+}
+function drawSections() {
+  const body = $('#secBody');
+  if (!SS) return;
+  if (!SS.duration) { setHTML(body, `<div class="note">${esc(SS.error || 'Add a track first: the sections are drawn over it.')}</div>`); return; }
+  if (!body.querySelector('#tl')) {
+    body.innerHTML = `<div class="tl" id="tl"><canvas id="tlc"></canvas><div id="tlsecs"></div><div class="tlhead" id="tlhead" hidden></div></div>
+      <div class="tlaxis" id="tlaxis"></div>
+      <div class="tlkey"><span><i style="background:${WANTC.b}"></i>sound asks for bright</span><span><i style="background:${WANTC.t}"></i>texture</span>
+        <span><i style="background:${WANTC.d}"></i>dark</span><span>height: loudness · drag a boundary · double-click to split · ⌥ drag: don't snap to onsets</span></div>
+      <div class="seclist" id="seclist"></div><div class="setlist" id="setlist"></div>`;
+    bindTimeline();
+    new ResizeObserver(() => { drawEnv(); drawAxis(); }).observe($('#tl'));
+  }
+  drawEnv(); drawAxis(); drawOverlay(); drawSecList(); drawSetList();
+  $('#secReset').disabled = secs.length < 2 && !secs[0].sets.length && !secs[0].any_pool;
+}
+function drawEnv() {
+  const box = $('#tl'), c = $('#tlc'); if (!box || !SS.env) return;
+  const dpr = devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const lv = SS.env.level, wt = SS.env.want, n = lv.length, bw = W / n;
+  for (let i = 0; i < n; i++) {
+    const h = Math.max(1, lv[i] * (H - 30));
+    g.globalAlpha = wt[i] === '-' ? 0.22 : 0.6; g.fillStyle = WANTC[wt[i]] || '#4a504a';
+    g.fillRect(i * bw, H - h, Math.max(0.8, bw - 0.25), h);
+  }
+  g.globalAlpha = 1;
+}
+function drawAxis() {
+  const ax = $('#tlaxis'); if (!ax) return;
+  const d = SS.duration, W = $('#tl').clientWidth, steps = [5, 10, 15, 30, 60, 120];
+  const step = steps.find(s => W / (d / s) >= 70) || 300;
+  let h = '';
+  for (let t = 0; t <= d - step * 0.4; t += step) h += `<span style="left:${t / d * 100}%">${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}</span>`;
+  setHTML(ax, h);
+}
+function drawOverlay() {
+  const d = SS.duration;
+  setHTML($('#tlsecs'), secs.map((s, i) => {
+    const a = s.start / d * 100, w = (secEnd(i) - s.start) / d * 100;
+    const band = s.sets.length ? s.sets.map(n => `<i style="background:${(setOf(n) || {}).color || '#666'}"></i>`).join('') : '<i style="background:#3a3f3a"></i>';
+    return `<div class="tlsec ${i === secSel ? 'sel' : ''}" style="left:${a}%;width:${w}%;--c:${secColor(s)}"><div class="band">${band}</div>
+      <span class="lab">${i + 1} · ${esc(s.label || s.sets.join(' + ') || 'every photo')}</span></div>`;
+  }).join('') + secs.slice(1).map((s, j) => `<div class="tlh ${secDrag && secDrag.i === j + 1 ? 'drag' : ''}" data-h="${j + 1}" style="left:${s.start / d * 100}%" title="${fmtT(s.start)}: drag to move"></div>`).join(''));
+}
+function secInfo(i) {
+  const s = secs[i], st = secStats && secStats[i] && Math.abs(secStats[i].start_s - s.start) < 0.05 ? secStats[i] : null;
+  const parts = [];
+  if (!s.sets.length) parts.push('every photo');
+  if (st) {
+    const tot = ['bright', 'texture', 'dark'].reduce((a, p) => a + st.photos[p], 0), x = tot ? st.cuts / tot : 0;
+    const lvl = x <= 4 ? 'var(--accent)' : x <= 8 ? 'var(--warn)' : 'var(--err)';
+    parts.push(`<b>${st.cuts}</b> cuts`);
+    if (s.sets.length) parts.push(`photos: bright <b>${st.photos.bright}</b> · texture <b>${st.photos.texture}</b> · dark <b>${st.photos.dark}</b>`);
+    if (tot) parts.push(`<b style="color:${lvl}">${x.toFixed(1)}×</b> each`);
+    if (st.empty) parts.push(`<span class="warn">its sets have no photos in bright / texture / dark yet, so it uses every photo</span>`);
+    else if (st.stand_in) {
+      const miss = ['bright', 'texture', 'dark'].filter(p => st.wanted[p] && !st.photos[p]);
+      parts.push(`<span class="warn">no ${miss.join(' / ')} photos in its sets: ${st.stand_in} cuts use another pool</span>`);
+    }
+  } else if (s.sets.length) {
+    const c = p => s.sets.reduce((a, n) => a + (((setOf(n) || {}).counts || {})[p] || 0), 0);
+    parts.push(`photos: bright ${c('bright')} · texture ${c('texture')} · dark ${c('dark')}`);
+  }
+  return parts.join(' · ');
+}
+function drawSecList() {
+  const a = document.activeElement;
+  if (a && a.dataset && a.dataset.seclabel !== undefined) return;     // typing a section's name
+  const S_ = SS.sets || [];
+  setHTML($('#seclist'), secs.map((s, i) => `<div class="secrow ${i === secSel ? 'sel' : ''}" data-sec="${i}" style="--c:${secColor(s)}">
+    <span class="num">${i + 1}</span>
+    <div><div class="when"><b>${fmtT(s.start)}</b> – ${fmtT(secEnd(i))} · ${(secEnd(i) - s.start).toFixed(1)} s</div>
+      <input class="in lab" data-seclabel="${i}" value="${esc(s.label)}" placeholder="name (optional)" maxlength="40"></div>
+    <div><div class="chips">${S_.length ? S_.map(st => `<button class="schip ${s.sets.includes(st.name) ? 'on' : ''}" data-secset="${i}" data-name="${esc(st.name)}" style="--c:${st.color}" title="${s.sets.includes(st.name) ? 'stop using' : 'use'} ${esc(st.name)} here"><span class="d"></span>${esc(st.name)}</button>`).join('')
+        : '<span class="note">No sets yet: make one below, then tag photos in the <a href="/sort" style="color:var(--accent)">sorter</a>.</span>'}
+      <label class="chk" title="Ignore bright / texture / dark here: any photo from its sets, whatever the sound"><input type="checkbox" data-secany="${i}" ${s.any_pool ? 'checked' : ''}> any pool</label></div>
+      <div class="info">${secInfo(i)}</div></div>
+    <div class="acts"><button class="btn sm" data-secplay="${i}" title="Set the preview range to this section">Preview this</button>
+      ${i ? `<button class="btn sm ghost" data-secmerge="${i}" title="Remove this boundary: section ${i + 1} joins section ${i}">Merge ←</button>` : ''}</div>
+  </div>`).join(''));
+}
+function drawSetList() {
+  const S_ = SS.sets || [], used = n => secs.map((s, i) => s.sets.includes(n) ? i + 1 : 0).filter(Boolean);
+  if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#setlist')) return;   // typing there
+  setHTML($('#setlist'), `<div class="sh"><b>Sets</b><span>tag photos in the <a href="/sort">sorter</a>: drag them onto a set, or ⇧1-9</span></div>` +
+    S_.map(st => { const c = st.counts || {}, u = used(st.name);
+      return `<div class="srow2">
+        <input type="color" value="${st.color}" data-setcolor="${esc(st.name)}" title="colour">
+        <span class="nm" data-setrename="${esc(st.name)}" title="click to rename" style="color:${st.color}">${esc(st.name)}</span>
+        <span class="cnt">bright ${c.bright || 0} · texture ${c.texture || 0} · dark ${c.dark || 0}${c.inbox ? ` · inbox ${c.inbox}` : ''} · ${u.length ? `section${u.length > 1 ? 's' : ''} ${u.join(', ')}` : 'no section uses it'}</span>
+        <button class="btn sm ghost" data-setremove="${esc(st.name)}" title="Remove the set (its photos stay where they are)">Remove</button></div>`; }).join('') +
+    `<div class="newset"><input class="in" id="secNewSet" maxlength="32" placeholder="new set name, then ↵"><span class="note">${SS.none ? `${['bright', 'texture', 'dark'].reduce((a, p) => a + (SS.none[p] || 0), 0)} pool photos are in no set` : ''}</span></div>`);
+}
+function saveSections(ms = 200) {
+  clearTimeout(secSaveT);
+  drawSections();
+  $('#secNote').textContent = 'saving…';
+  secSaveT = setTimeout(async () => {
+    try {
+      const r = await api('/api/sections', {sections: secs});
+      secSaveT = null; applySets(r, true);
+      $('#secNote').textContent = 'saved'; setTimeout(() => { if ($('#secNote').textContent === 'saved') $('#secNote').textContent = ''; }, 2500);
+      simulateSoon(0);
+    } catch (e) { secSaveT = null; $('#secNote').textContent = ''; toast(e.message, 'err'); loadSets(true); }
+  }, ms);
+}
+function playT() {
+  const v = $('#video'), r = ((S && S.renders) || []).find(x => x.name === selVideo);
+  if (!r || v.hidden || !v.duration) return null;
+  const p = r.meta && r.meta.preview;
+  return (p ? p[0] : 0) + v.currentTime;
+}
+function seekTo(t) {                                       // move the player there if the render covers t
+  const v = $('#video'), r = ((S && S.renders) || []).find(x => x.name === selVideo);
+  if (!r || !v.duration) return;
+  const p = r.meta && r.meta.preview, t0 = p ? p[0] : 0;
+  if (t >= t0 && t - t0 <= v.duration) v.currentTime = t - t0;
+}
+function splitAt(t) {
+  const i = secAt(t);
+  if (t - secs[i].start < SEC_GAP || secEnd(i) - t < SEC_GAP) { toast('Too close to a section boundary to split there.', 'warn'); return; }
+  secs.splice(i + 1, 0, {start: t, sets: [...secs[i].sets], any_pool: secs[i].any_pool, label: ''});
+  secSel = i + 1; saveSections();
+  toast(`Section ${i + 2} starts at ${fmtT(t)}. Tick its sets below.`);
+}
+function bindTimeline() {
+  const tl = $('#tl');
+  const tAt = e => { const b = tl.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - b.left) / b.width)) * SS.duration; };
+  tl.addEventListener('pointerdown', e => {
+    const h = e.target.closest('.tlh');
+    if (!h || e.button !== 0) return;
+    e.preventDefault(); try { h.setPointerCapture(e.pointerId); } catch {}
+    secDrag = {i: +h.dataset.h, moved: false};
+  });
+  tl.addEventListener('pointermove', e => {
+    if (!secDrag) return;
+    const i = secDrag.i, lo = secs[i - 1].start + SEC_GAP, hi = secEnd(i) - SEC_GAP;
+    secs[i].start = Math.max(lo, Math.min(hi, snapT(tAt(e), e.altKey)));
+    secDrag.moved = true; drawOverlay();
+    $('#secNote').textContent = `section ${i + 1} from ${fmtT(secs[i].start)}`;
+  });
+  const up = () => { if (!secDrag) return; const m = secDrag.moved; secDrag = null; if (m) saveSections(0); else drawOverlay(); };
+  tl.addEventListener('pointerup', up); tl.addEventListener('pointercancel', up);
+  tl.addEventListener('click', e => { if (e.target.closest('.tlh')) return; const t = tAt(e); secSel = secAt(t); drawOverlay(); drawSecList(); seekTo(t); });
+  tl.addEventListener('dblclick', e => { if (!e.target.closest('.tlh')) splitAt(snapT(tAt(e), e.altKey)); });
+}
+$('#secPanel').addEventListener('click', async e => {
+  const t = e.target;
+  const row = t.closest('[data-sec]'); if (row && !t.closest('button, input, label, a')) { secSel = +row.dataset.sec; drawOverlay(); drawSecList(); }
+  const chip = t.closest('[data-secset]');
+  if (chip) { const s = secs[+chip.dataset.secset], n = chip.dataset.name; s.sets = s.sets.includes(n) ? s.sets.filter(x => x !== n) : [...s.sets, n]; saveSections(); return; }
+  const pl = t.closest('[data-secplay]');
+  if (pl) { const i = +pl.dataset.secplay; $('#pStart').value = Math.floor(secs[i].start * 2) / 2; $('#pEnd').value = Math.ceil(secEnd(i) * 2) / 2;
+    $('#pStart').dispatchEvent(new Event('change')); toast(`Preview range set to section ${i + 1}: click Render preview.`); return; }
+  const mg = t.closest('[data-secmerge]');
+  if (mg) { const i = +mg.dataset.secmerge; secs.splice(i, 1); secSel = i - 1; saveSections(); toast(`Merged: section ${i} now runs to ${fmtT(secEnd(i - 1))}.`); return; }
+  const rn = t.closest('[data-setrename]');
+  if (rn) { const old = rn.dataset.setrename; rn.outerHTML = `<input class="in" data-renaming="${esc(old)}" value="${esc(old)}" maxlength="32">`;
+    const inp = $('#setlist [data-renaming]'); inp.focus(); inp.select(); return; }
+  const rm = t.closest('[data-setremove]');
+  if (rm) {
+    const n = rm.dataset.setremove, st = setOf(n), c = (st && st.counts) || {}, total = Object.values(c).reduce((a, b) => a + b, 0);
+    if (!await ask(`Remove the set “${n}”?`, `Its ${total} photo${total === 1 ? '' : 's'} stay${total === 1 ? 's' : ''} where ${total === 1 ? 'it is' : 'they are'}; they just leave the set. Sections that use it stop using it.`, 'Remove set')) return;
+    try { applySets(await api('/api/sets', {op: 'remove', name: n}), true); simulateSoon(0); } catch (err) { toast(err.message, 'err'); }
+  }
+});
+$('#secPanel').addEventListener('change', async e => {
+  const t = e.target;
+  if (t.dataset.secany !== undefined) { secs[+t.dataset.secany].any_pool = t.checked; saveSections(); }
+  else if (t.dataset.seclabel !== undefined) { secs[+t.dataset.seclabel].label = t.value.trim(); saveSections(); }
+  else if (t.dataset.setcolor !== undefined) {
+    try { applySets(await api('/api/sets', {op: 'recolor', name: t.dataset.setcolor, color: t.value}), true); } catch (err) { toast(err.message, 'err'); }
+  }
+});
+$('#secPanel').addEventListener('keydown', async e => {
+  const t = e.target;
+  if (t.dataset.seclabel !== undefined && e.key === 'Enter') { t.blur(); return; }
+  if (t.dataset.renaming !== undefined) {
+    if (e.key === 'Escape') { t.blur(); drawSetList(); return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const old = t.dataset.renaming, to = t.value.trim();
+    if (to && to !== old) { try { applySets(await api('/api/sets', {op: 'rename', name: old, to}), true); simulateSoon(0); } catch (err) { toast(err.message, 'err'); return; } }
+    t.blur(); drawSetList();
+  }
+  if (t.id === 'secNewSet' && e.key === 'Enter') {
+    e.preventDefault(); const name = t.value.trim(); if (!name) return;
+    try { const r = await api('/api/sets', {op: 'create', name}); t.value = ''; t.blur(); applySets(r, true);
+      toast(`Made the set “${name}”. Tag photos for it in the sorter, then tick it on a section.`); } catch (err) { toast(err.message, 'err'); }
+  }
+});
+$('#secPanel').addEventListener('focusout', e => { if (e.target.dataset && e.target.dataset.renaming !== undefined) setTimeout(drawSetList, 150); });
+$('#secSplit').onclick = () => {
+  if (!SS || !SS.duration) return;
+  const t = playT();
+  if (t === null) { toast('Play or scrub a render first, or double-click the timeline where the new section should start.', 'warn'); return; }
+  splitAt(snapT(t, false));
+};
+$('#secSuggest').onchange = async e => {
+  const n = +e.target.value; e.target.value = ''; if (!n) return;
+  if ((secs.length > 1 || secs.some(s => s.sets.length)) && !await ask(`Replace your ${secs.length} section${secs.length > 1 ? 's' : ''}?`,
+      `The track is split into ${n} sections where its sound changes most. Each new section keeps the sets of the section it starts in, so tick them again where that's wrong.`, 'Replace')) return;
+  $('#secNote').textContent = 'listening for where the track changes…';
+  try {
+    const r = await api('/api/suggest', {n});
+    const old = secs.map(s => ({...s}));
+    const at = t => { let i = 0; while (i + 1 < old.length && old[i + 1].start <= t + 1e-6) i++; return old[i]; };
+    secs = r.starts.map(t => ({start: t, sets: [...at(t).sets], any_pool: at(t).any_pool, label: ''}));
+    secSel = 0; saveSections(0);
+    if (r.starts.length < n) toast(`Only ${r.starts.length} clear changes in this track.`, 'warn');
+  } catch (err) { $('#secNote').textContent = ''; toast(err.message, 'err'); }
+};
+$('#secReset').onclick = async () => {
+  if (!await ask('Back to one section?', 'The whole film uses every photo again. Your sets stay, and so do the photos in them.', 'One section')) return;
+  secs = oneSection(); secSel = 0; saveSections(0);
+};
+(function playhead() {                                     // the red line follows the player
+  const t = SS && SS.duration ? playT() : null, h = $('#tlhead');
+  if (h) {
+    h.hidden = t === null;
+    if (t !== null) {
+      h.style.left = (t / SS.duration * 100) + '%';
+      const i = secAt(t);
+      document.querySelectorAll('#seclist .secrow').forEach((r, k) => r.classList.toggle('now', k === i));
+    }
+  }
+  requestAnimationFrame(playhead);
+})();
+loadSets(true);
+setInterval(() => {
+  const busy = secDrag || secSaveT || (document.activeElement && document.activeElement.closest && document.activeElement.closest('#secPanel input'));
+  if (document.visibilityState === 'visible' && !busy) loadSets(false);
+}, 8000);
 
 refresh();
 </script>

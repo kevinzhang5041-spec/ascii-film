@@ -109,17 +109,39 @@ main { padding: 14px 20px 110px; }
   background: linear-gradient(90deg, transparent 33.2%, rgba(255,255,255,.25) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.25) 66.6%, transparent 66.8%),
               linear-gradient(0deg, transparent 33.2%, rgba(255,255,255,.25) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.25) 66.6%, transparent 66.8%); }
 .cropping .frame .thirds { display: block; }
-.cbar { display: none; }
+.zbar.cbar { display: none; }
 .tilt { display: inline-flex; align-items: center; gap: 6px; font: 12px var(--mono); color: var(--muted); }
 .tilt input[type=range] { accent-color: var(--accent); width: 150px; }
 .tilt b { color: var(--text); font-weight: 500; min-width: 54px; display: inline-block; text-align: right; }
-.cropping .cbar { display: flex; }
+.cropping .zbar.cbar { display: flex; }
 .cropping .zbar.normal { display: none; }
 .card .cut { position: absolute; top: 6px; right: 6px; font: 11px/1 var(--mono); padding: 4px 5px; border-radius: 5px; background: rgba(0, 0, 0, .72); color: var(--accent); }
 .card.sel .cut { right: 32px; }
 .zbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line-2); }
 .zbar .info { font: 12.5px var(--mono); color: var(--muted); flex: 1; min-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zbar .info b { color: var(--text); font-weight: 500; }
+/* sets */
+.setrow { flex-basis: 100%; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.setrow .sl { font: 11.5px var(--mono); color: var(--faint); margin-right: 2px; }
+.schip { background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 3px 10px; font: 12px var(--mono);
+  color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.schip .d { width: 8px; height: 8px; border-radius: 2px; background: var(--c, var(--muted)); }
+.schip b { font-weight: 500; color: var(--text); }
+.schip kbd { font: 10px var(--mono); color: var(--faint); }
+.schip.on { background: var(--panel-2); color: var(--text); border-color: var(--c, #4a544a); }
+.schip.add { border-style: dashed; }
+.schip.dropok { border-color: var(--c); background: color-mix(in srgb, var(--c) 24%, transparent); color: var(--text); }
+.setrow input.in { padding: 3px 9px; border-radius: 999px; width: 200px; }
+.setrow .shint { font: 11.5px var(--mono); color: var(--faint); margin-left: 6px; }
+.card .sdots { position: absolute; right: 6px; bottom: 32px; display: flex; gap: 3px; padding: 4px 5px; border-radius: 5px; background: rgba(0, 0, 0, .7); }
+.card .sdots i { width: 9px; height: 9px; border-radius: 2px; display: block; }
+.zsets { display: inline-flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.zsets .sl { font: 11.5px var(--mono); color: var(--faint); }
+.act select.in { padding: 5px 8px; }
+.zones.setzones { margin-top: 8px; }
+.zones.setzones .zone { min-height: 42px; padding: 8px 12px; }
+.zones.setzones .zone .d { border-radius: 3px; }
+
 /* drag and drop */
 .card .im { -webkit-user-drag: none; }
 .card.lifted { opacity: .35; }
@@ -177,6 +199,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
   <span class="seg" id="view"><button data-v="film" class="on" title="What the film shows: the centre 16:9">film crop</button><button data-v="whole">whole</button></span>
   <select class="in" id="order" title="Order of the photos"><option value="name">by name</option><option value="most">most used first</option><option value="least">least used first</option></select>
   <label class="ctl">size <input type="range" id="size" min="110" max="380" value="190"></label>
+  <div class="setrow" id="setrow"></div>
 </div>
 
 <div class="ustrip" id="ustrip" title="How the next render uses each pool, with your saved settings"></div>
@@ -190,7 +213,9 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
   <button class="btn" data-to="suggest">Use suggestion<kbd>S</kbd></button>
   <button class="btn" data-to="rejected" style="--c:var(--rejected)"><span class="d"></span>Reject<kbd>X</kbd></button>
   <button class="btn" data-to="inbox" style="--c:var(--inbox)"><span class="d"></span>Back to inbox<kbd>0</kbd></button>
-  <span class="hint">drag photos onto a pool · click · ⇧-click range · ⌘-click add · ⌘A all · space: look closer · C: crop / rotate</span>
+  <select class="in" id="addSet" title="Put the selected photos into a set (⇧1-9 toggles sets 1-9)" hidden></select>
+  <select class="in" id="rmSet" title="Take the selected photos out of a set" hidden></select>
+  <span class="hint">drag photos onto a pool or a set · click · ⇧-click range · ⌘-click add · ⌘A all · space: look closer · C: crop / rotate</span>
 </div>
 
 <div class="zoom" id="zoom" hidden>
@@ -204,6 +229,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
     <button class="btn" data-to="suggest">Suggestion<kbd>S</kbd></button>
     <button class="btn" data-to="rejected" style="--c:var(--rejected)"><span class="d"></span>Reject<kbd>X</kbd></button>
     <button class="btn" data-to="inbox" style="--c:var(--inbox)"><span class="d"></span>Inbox<kbd>0</kbd></button>
+    <span class="zsets" id="zsets"></span>
     <button class="btn" id="zprev">←</button><button class="btn" id="znext">→</button>
     <button class="btn" id="zclose">Close<kbd>esc</kbd></button>
   </div>
@@ -226,6 +252,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
     <div class="zone" data-drop="rejected" style="--c:var(--rejected)"><span class="d"></span><b>Reject</b><span class="zn"></span></div>
     <div class="zone" data-drop="inbox" style="--c:var(--inbox)"><span class="d"></span><b>Inbox</b><span class="zn"></span></div>
   </div>
+  <div class="zones setzones" id="setzones"></div>
 </div>
 <div class="toasts" id="toasts"></div>
 <script src="/web/drag.js"></script>
@@ -256,9 +283,11 @@ function toast(msg, kind = '') {
 let U = null, order = store.get('order') || 'name';                 // U: how the next render uses the photos
 const usesOf = p => (U && U.photos && U.photos[p.ref]) ? U.photos[p.ref].cuts : 0;
 const inPool = p => ['bright', 'texture', 'dark'].includes(p.where);
+let setFilter = store.get('setFilter') || '*';                     // '*' any, '-' in no set, or a set's name
+const inSetFilter = p => setFilter === '*' || (setFilter === '-' ? !p.sets.length : p.sets.includes(setFilter));
 const visible = () => {
   if (!L) return [];
-  const v = L.photos.filter(p => tab === 'all' || p.where === tab);
+  const v = L.photos.filter(p => (tab === 'all' || p.where === tab) && inSetFilter(p));
   if (order !== 'name' && U) v.sort((a, b) => (order === 'most' ? -1 : 1) * (usesOf(a) - usesOf(b)) || a.name.localeCompare(b.name));
   return v;
 };
@@ -295,6 +324,8 @@ const thumbURL = (p, h) => `/thumb/${p.where}/${encodeURIComponent(p.name)}?h=${
 
 async function load() {
   try { L = await api('/api/photos'); } catch (e) { toast(e.message, 'err'); return; }
+  for (const p of L.photos) p.sets = p.sets || [];
+  L.sets = L.sets || [];
   const refs = new Set(L.photos.map(p => p.ref));
   for (const r of [...sel]) if (!refs.has(r)) sel.delete(r);
   draw();
@@ -305,12 +336,14 @@ function draw() {
     ${t === 'all' ? '' : '<span class="d"></span>'}${t} <b>${t === 'all' ? all : c[t]}</b></button>`).join('');
   const v = visible();
   focus = Math.max(0, Math.min(focus, v.length - 1));
-  const newSig = tab + view + order + v.map(p => p.ref + (p.suggest || '') + cropSig(p) + ':' + usesOf(p)).join('|');
+  drawSets();
+  const newSig = tab + view + order + setFilter + v.map(p => p.ref + (p.suggest || '') + cropSig(p) + ':' + usesOf(p) + ':' + p.sets.join(',')).join('|');
   if (newSig !== sig) {
     sig = newSig;
     $('#grid').innerHTML = v.map((p, i) => `<div class="card" data-i="${i}" data-ref="${esc(p.ref)}" style="--c:${COLOR[p.where]}">
       <img class="im" loading="lazy" src="${thumbURL(p, 240)}" alt="">
       ${tab === 'all' ? `<span class="where" style="--c:${COLOR[p.where]}">${p.where}</span>` : ''}
+      ${p.sets.length ? `<span class="sdots" title="sets: ${esc(p.sets.join(', '))}">${p.sets.map(n => `<i style="background:${setColor(n)}"></i>`).join('')}</span>` : ''}
       ${p.crop ? `<span class="cut" title="framed by hand">${p.crop.rot ? '↻' : ''}${'w' in p.crop ? '✂' : ''}</span>` : ''}
       ${U && !U.error && inPool(p) ? (usesOf(p) ? `<span class="uses" style="--lvl:${level(usesOf(p))}" title="cuts to this photo in the film">×${usesOf(p)}</span>` : '<span class="uses none" title="not in the film with these settings">unused</span>') : ''}
       <div class="meta"><span class="dot"></span><span class="nm" title="${esc(p.name)}">${esc(p.name)}</span>
@@ -323,7 +356,7 @@ function draw() {
   e.hidden = v.length > 0;
   if (!v.length) e.innerHTML = tab === 'inbox'
     ? `The inbox is empty.<br>Drag photos or folders here from Finder,<br>select photos in the Photos app and click <b>Import Photos selection</b>,<br>pick an album under <b>Import album…</b>, or <b>Add files…</b>.`
-    : `No photos in ${tab}.`;
+    : `No photos in ${tab}${setFilter === '*' ? '' : setFilter === '-' ? ' outside every set' : ` in the set “${esc(setFilter)}”`}.`;
   const n = sel.size;
   $('#nsel').textContent = n ? `${n} selected` : (v.length ? 'nothing selected (keys act on the outlined one)' : 'nothing selected');
   if (!watching && !adding) $('#job').textContent = L.unscored ? `working out suggestions for ${L.unscored} photos…` : '';
@@ -407,6 +440,8 @@ function drawZoom() {
     (p.crop ? ` · <span style="color:var(--accent)">${p.crop.rot ? `↻ ${p.crop.rot}° ` : ''}${'w' in p.crop ? '✂ your crop' : ''}</span>` : '') +
     (U && U.photos && inPool(p) ? (U.photos[p.ref] ? ` · in the film <span style="color:${level(U.photos[p.ref].cuts)}">${U.photos[p.ref].cuts}×</span>, first at ${U.photos[p.ref].first_s}s, ${U.photos[p.ref].seconds}s on screen` : ' · not in the film') : '') +
     ` · ${zoomAt + 1}/${v.length}`;
+  const S = L.sets || [];
+  $('#zsets').innerHTML = S.length ? '<span class="sl">sets</span>' + S.map((s, i) => `<button class="schip ${p.sets.includes(s.name) ? 'on' : ''}" data-zset="${esc(s.name)}" style="--c:${s.color}" title="${p.sets.includes(s.name) ? 'take it out of' : 'put it in'} ${esc(s.name)}${i < 9 ? ` (⇧${i + 1})` : ''}"><span class="d"></span>${esc(s.name)}</button>`).join('') : '';
   drawFrame();
 }
 // The film shows a 16:9 part of each photo: your hand crop if you made one, otherwise the centre.
@@ -548,6 +583,9 @@ document.addEventListener('keydown', e => {
     else if (k === '-' || k === '_') { e.preventDefault(); editing = scaleRect(editing, 1 / 1.05); drawFrame(); }
     return;
   }
+  if (e.shiftKey && !e.metaKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) {    // ⇧1-9: in or out of set 1-9
+    e.preventDefault(); toggleSet(+e.code.slice(5) - 1, zoomAt !== null ? [visible()[zoomAt].ref] : targets()); return;
+  }
   if (zoomAt !== null) {
     if (k === 'c' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); startCrop(); return; }
     if (k === 'escape' || k === ' ') { e.preventDefault(); closeZoom(); }
@@ -623,6 +661,82 @@ $('#impFiles').onclick = async () => {
   } catch (e) { toast(e.message, 'err'); }
 };
 
+// ---------------------------------------------------------------- sets
+// A set is a named group of photos (a photo can be in several). In the dashboard's Sections panel, each part of
+// the track chooses the sets its cuts draw from.
+const setColor = n => ((L && L.sets) || []).find(s => s.name === n)?.color || 'var(--muted)';
+let naming = false;
+function drawSets() {
+  const S = L.sets || [];
+  if (setFilter !== '*' && setFilter !== '-' && !S.some(s => s.name === setFilter)) { setFilter = '*'; store.set('setFilter', '*'); }
+  const count = n => L.photos.filter(p => p.sets.includes(n)).length, none = L.photos.filter(p => !p.sets.length).length;
+  const html = `<span class="sl">sets</span>` +
+    `<button class="schip ${setFilter === '*' ? 'on' : ''}" data-sf="*" title="show photos whatever their sets">any</button>` +
+    S.map((s, i) => `<button class="schip ${setFilter === s.name ? 'on' : ''}" data-sf="${esc(s.name)}" data-dropset="${esc(s.name)}" style="--c:${s.color}"
+      title="show only ${esc(s.name)} · drop photos here to add them${i < 9 ? ` · ⇧${i + 1} puts the selected photos in or out` : ''}"><span class="d"></span>${esc(s.name)} <b>${count(s.name)}</b>${i < 9 ? `<kbd>⇧${i + 1}</kbd>` : ''}</button>`).join('') +
+    (S.length ? `<button class="schip ${setFilter === '-' ? 'on' : ''}" data-sf="-" title="photos in no set">in no set <b>${none}</b></button>` : '') +
+    (naming ? '' : `<button class="schip add" id="newSet" title="Make a set${sel.size ? ' (the selected photos go into it)' : ''}">+ New set</button>`) +
+    (S.length ? '' : `<span class="shint">Group photos into sets, then give each part of the track its own sets in the dashboard's Sections panel.</span>`);
+  const row = $('#setrow');
+  if (naming) {                                          // leave the row alone while a name is being typed
+    if (!row.querySelector('#newSetName')) { row.innerHTML = html + newSetInput(); row._html = null; row.querySelector('#newSetName').focus(); }
+  } else if (row._html !== html) { row.innerHTML = html; row._html = html; }
+  for (const [id, ph] of [['addSet', '＋ set…'], ['rmSet', '− set…']]) {
+    const el = $('#' + id), opts = `<option value="">${ph}</option>` + S.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+    if (el._opts !== opts) { el.innerHTML = opts; el._opts = opts; }
+    el.hidden = !S.length;
+  }
+}
+const newSetInput = () => `<input class="in" id="newSetName" maxlength="32" placeholder="set name${sel.size ? `, takes the ${sel.size} selected` : ''} (↵)">`;
+$('#setrow').addEventListener('click', e => {
+  if (e.target.closest('#newSet')) { naming = true; $('#setrow')._html = null; drawSets(); return; }
+  const c = e.target.closest('[data-sf]'); if (!c) return;
+  setFilter = setFilter === c.dataset.sf && c.dataset.sf !== '*' ? '*' : c.dataset.sf;
+  store.set('setFilter', setFilter); sel.clear(); focus = 0; sig = ''; draw(); scrollTo(0, 0);
+});
+$('#setrow').addEventListener('keydown', async e => {
+  if (e.target.id !== 'newSetName') return;
+  if (e.key === 'Escape') { e.preventDefault(); naming = false; $('#setrow')._html = null; drawSets(); return; }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const name = e.target.value.trim(); if (!name) return;
+  try {
+    await api('/api/sets', {op: 'create', name});
+    naming = false; $('#setrow')._html = null;
+    const refs = [...sel];
+    await load();
+    if (refs.length) await setMembers(name, refs, true); else toast(`Made the set “${name}”. Drag photos onto it, or select some and press ⇧${(L.sets || []).length}.`);
+  } catch (err) { toast(err.message, 'err'); }
+});
+$('#setrow').addEventListener('focusout', e => {
+  if (e.target.id === 'newSetName' && !e.target.value.trim()) setTimeout(() => { naming = false; $('#setrow')._html = null; drawSets(); }, 150);
+});
+async function setMembers(name, refs, on) {
+  if (!refs.length) return;
+  try {
+    const r = await api('/api/members', {refs, set: name, on});
+    for (const e of r.errors) toast(e, 'err');
+    for (const ref of refs) {
+      const p = L.photos.find(x => x.ref === ref); if (!p) continue;
+      if (on && !p.sets.includes(name)) p.sets.push(name);
+      if (!on) p.sets = p.sets.filter(x => x !== name);
+    }
+    toast(r.changed ? `${on ? 'Added' : 'Took'} ${r.changed} photo${r.changed > 1 ? 's' : ''} ${on ? 'to' : 'out of'} ${name}` : `Already ${on ? 'in' : 'out of'} ${name}`);
+    sig = ''; draw(); usageSoon();
+  } catch (e) { toast(e.message, 'err'); }
+}
+function toggleSet(i, refs) {
+  const s = (L.sets || [])[i]; if (!s || !refs.length) return;
+  const all = refs.every(r => (L.photos.find(p => p.ref === r)?.sets || []).includes(s.name));
+  setMembers(s.name, refs, !all);
+}
+$('#addSet').onchange = e => { const n = e.target.value; e.target.value = ''; if (n) setMembers(n, targets(), true); };
+$('#rmSet').onchange = e => { const n = e.target.value; e.target.value = ''; if (n) setMembers(n, targets(), false); };
+$('#zsets').addEventListener('click', e => {
+  const b = e.target.closest('[data-zset]'); if (!b) return;
+  const p = visible()[zoomAt]; if (p) setMembers(b.dataset.zset, [p.ref], !p.sets.includes(b.dataset.zset));
+});
+
 // ---------------------------------------------------------------- drag and drop
 // Photos: drag one (or the selection) onto a pool: the dock at the bottom, a tab or a usage card.
 // Files and folders from Finder: drop on a pool in the dock, or anywhere else to add them to the tab you're on.
@@ -641,11 +755,17 @@ function showDock(mode, refs = []) {
   });
   $('#dhint').textContent = mode === 'files'
     ? `Drop on a pool to add the photos there, or on the grid to add them to ${fileHome()}. Folders work too.`
-    : `Drop on a pool to move ${refs.length === 1 ? 'the photo' : `these ${refs.length} photos`} there (or on a tab at the top). Esc cancels.`;
+    : `Drop on a pool to move ${refs.length === 1 ? 'the photo' : `these ${refs.length} photos`} there (or on a tab at the top)${(L.sets || []).length ? ', or on a set to add to it' : ''}. Esc cancels.`;
+  const S = mode === 'photos' ? (L.sets || []) : [];
+  $('#setzones').hidden = !S.length;
+  $('#setzones').innerHTML = S.map(st => {
+    const all = refs.every(r => (L.photos.find(p => p.ref === r)?.sets || []).includes(st.name));
+    return `<div class="zone ${all ? 'here' : ''}" data-dropset="${esc(st.name)}" style="--c:${st.color}"><span class="d"></span><b>${esc(st.name)}</b><span class="zn">${all ? 'already in it' : 'add to set'}</span></div>`;
+  }).join('');
   dock.hidden = false;
 }
 window.SF && SF.pointerDrag({
-  root: $('#grid'), items: '.card', targets: '[data-drop]',
+  root: $('#grid'), items: '.card', targets: '[data-drop], [data-dropset]',
   start(el) {
     const v = visible(), i = +el.dataset.i, p = v[i];
     if (!p || zoomAt !== null) return null;
@@ -658,9 +778,14 @@ window.SF && SF.pointerDrag({
     return {refs, ghost: `<div class="pile">${pics.reverse().map(s => `<img src="${esc(s)}" alt="">`).join('')}` +
       `${refs.length > 1 ? `<span class="count">${refs.length}</span>` : ''}</div><div class="to"></div>`};
   },
-  accepts: (t, d) => t.dataset.drop in COLOR && d.refs.some(r => r.split('/')[0] !== t.dataset.drop),
-  label: (t, d) => t ? `move ${d.refs.length > 1 ? d.refs.length + ' ' : ''}to <b style="--c:${COLOR[t.dataset.drop]}">${t.dataset.drop}</b>` : 'drop on a pool',
+  accepts: (t, d) => t.dataset.dropset !== undefined
+    ? d.refs.some(r => !(L.photos.find(p => p.ref === r)?.sets || []).includes(t.dataset.dropset))
+    : t.dataset.drop in COLOR && d.refs.some(r => r.split('/')[0] !== t.dataset.drop),
+  label: (t, d) => !t ? 'drop on a pool or a set'
+    : t.dataset.dropset !== undefined ? `add ${d.refs.length > 1 ? d.refs.length + ' ' : ''}to set <b style="--c:${setColor(t.dataset.dropset)}">${esc(t.dataset.dropset)}</b>`
+    : `move ${d.refs.length > 1 ? d.refs.length + ' ' : ''}to <b style="--c:${COLOR[t.dataset.drop]}">${t.dataset.drop}</b>`,
   async drop(t, d) {
+    if (t.dataset.dropset !== undefined) return setMembers(t.dataset.dropset, d.refs, true);
     const to = t.dataset.drop, n = await assign(to, d.refs);
     if (n) toast(`Moved ${n} photo${n > 1 ? 's' : ''} to ${to}`);
   },

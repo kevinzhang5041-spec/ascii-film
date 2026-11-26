@@ -6,7 +6,8 @@ audio in and in sync, does the duration match. Plus stills/contact sheets for lo
                -> proves no frame was dropped, duplicated or shifted on the way through x264 / concat / mux
   audio        onsets re-detected from the muxed AAC audio land on the same frames as in the original track
   blind        pixels vs sound, no score used: around each isolated onset heard in the muxed audio, on which
-               frame does the most new light/ink appear? (0 = exactly on the onset frame)
+               frame does the most new light/ink appear? (0 = exactly on the onset frame). Onsets next to the
+               background video are left out: it brings light of its own when a shot ends.
   truth        (test track only) detected onsets vs the known event times the test track was built from
 """
 from __future__ import annotations
@@ -180,10 +181,13 @@ def verify(video: Path, root: Path, cfg: dict, log=print) -> dict:
         # ---- blind: pixels vs sound, no score involved ----------------------------------------------------
         heard = np.intersect1d(mux_frames, onsets) - f0       # heard in both the muxed and the original audio
         offs = blind_offsets(dec, heard)
+        bg = {int(r["frame"]) - f0 for r in edl if r.get("background")}      # frames showing the background video
+        near = [(f, x) for f, x in offs if any(g in bg for g in range(f - 3, f + 3))]
+        offs = [fx for fx in offs if fx not in near]
         o = np.array([x for _, x in offs])
         rep["blind"] = dict(isolated_onsets=len(offs), exact=int((o == 0).sum()) if len(o) else 0,
                             max_error_frames=int(np.abs(o).max()) if len(o) else None,
-                            off=[(f + f0, x) for f, x in offs if x])
+                            off=[(f + f0, x) for f, x in offs if x], beside_background=len(near))
 
     # ---- truth: the synthetic track's own event list ----------------------------------------------------
     ev_path = an.track.with_name(an.track.stem + "_events.json")
@@ -240,7 +244,9 @@ def summary(rep: dict) -> str:
                  f"frame, {a['matched'] - a.get('same_frame', 0)} within 2 frames (detector, not timing)")
         L.append(f"  blind      biggest burst of new light within +-2 frames of each isolated onset: on the onset "
                  f"frame for {b['exact']}/{b['isolated_onsets']}" + (f"; off: " + ", ".join(
-                     f"frame {f} by {x:+d}" for f, x in b["off"]) if b["off"] else ""))
+                     f"frame {f} by {x:+d}" for f, x in b["off"]) if b["off"] else "")
+                 + (f" ({b['beside_background']} beside the background video left out)"
+                    if b.get("beside_background") else ""))
     if "truth" in rep:
         t = rep["truth"]
         L.append(f"  truth      {t['matched']}/{t['events']} test-track events detected ({t['exact_frame']} on the "
@@ -280,7 +286,8 @@ def pick_stills(edl: list[dict], limit: int = 12) -> list[tuple[int, str]]:
         add(min(lit, key=lambda r: (r["cols"], -r["strength"])), "coarsest grid")
         add(max(lit, key=lambda r: r["cols"]), "finest grid")
     add(first(lambda r: r["kind"] == "decay"), "decay toward black")
-    add(first(lambda r: r["kind"] == "silence" and r["frame"] > 0), "silence = black")
+    add(first(lambda r: r.get("background")), "background video")
+    add(first(lambda r: r["kind"] == "silence" and r["frame"] > 0 and not r.get("background")), "silence = black")
     return sorted(picks[:limit])
 
 

@@ -113,6 +113,8 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; pa
 .thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; max-height: 118px; overflow: auto; }
 .thumbs img { height: 36px; border-radius: 3px; display: block; background: #000; cursor: grab; -webkit-user-drag: none; }
 .thumbs img.lifted { opacity: .3; }
+.bgthumb { display: block; height: 54px; margin-top: 8px; border-radius: 3px; background: #000; cursor: zoom-in; }
+.drop .sub .off { color: var(--warn); }
 body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 .dragghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(14px, 12px); }
 .dragghost .pile img { display: block; height: 62px; border-radius: 5px; border: 1.5px solid rgba(255, 255, 255, .75);
@@ -483,6 +485,18 @@ function drawInputs() {
     <div class="dh"><span class="dot" style="background:var(--text)"></span><span class="name">track</span><span class="grow"></span>
       <span class="count">${t.name ? fmtB(t.bytes) : ''}</span><button class="btn sm" data-pick="audio">${t.name ? 'Replace…' : 'Add…'}</button></div>
     <div class="sub">${t.name ? esc(t.name) : 'wav / flac / mp3 / m4a / aiff'}</div></div>`;
+  const b = S.background || {};
+  const where = b.show_in === 'silence' ? 'where the track is silent' : 'in every frame that would be black';
+  html += `<div class="drop" data-to="background">
+    <div class="dh"><span class="dot" style="background:var(--muted)"></span><span class="name">background video</span>
+      <span class="note">instead of black</span><span class="grow"></span>
+      <span class="count">${b.name ? (b.duration ? b.duration.toFixed(1) + ' s · ' : '') + fmtB(b.bytes) : ''}</span>
+      ${b.name ? '<button class="btn sm ghost" data-bgremove="1" title="Take it out of the film (it moves to .work/replaced/)">Remove…</button>' : ''}
+      <button class="btn sm" data-pick="background">${b.name ? 'Replace…' : 'Add…'}</button></div>
+    <div class="sub">${b.name ? `${esc(b.name)}${b.size ? ' · ' + b.size : ''} · ${b.enabled ? `plays ${where}, ${b.style === 'plain' ? 'as itself' : 'in characters'}` : '<span class="off">off (Tune → Background video)</span>'}`
+      : `optional · mov / mp4 / m4v · plays ${where}`}${b.error ? ` · <span class="off">${esc(b.error)}</span>` : ''}</div>
+    ${b.thumb ? `<img class="bgthumb" src="${b.thumb}&h=108" data-light="${b.thumb}&h=720" alt="" title="where the video starts (click to enlarge)">` : ''}
+  </div>`;
   for (const k of ['bright', 'texture', 'dark']) {
     const d = p[k] || {count: 0, files: [], folder: 'images/' + k};
     html += `<div class="drop" data-to="${k}">
@@ -646,7 +660,7 @@ $('#btnRendersDir').onclick = () => run('/api/reveal', {what: 'renders'});
 $('#root').onclick = () => run('/api/reveal', {});
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-play],[data-verify],[data-stills],[data-light],[data-toggle],[data-job],[data-plot],[data-pick]');
+  const t = e.target.closest('[data-play],[data-verify],[data-stills],[data-light],[data-toggle],[data-job],[data-plot],[data-pick],[data-bgremove]');
   if (!t) return;
   const d = t.dataset;
   if (d.play) { selVideo = d.play; drawRenders(); drawPlayer(); $('#video').play().catch(() => {}); }
@@ -657,7 +671,18 @@ document.addEventListener('click', e => {
   else if (d.job) { selJob = {id: d.job}; $('#jobs')._html = null; drawJobs(); }
   else if (d.plot) { selPlot = d.plot; drawAnalysis(); }
   else if (d.pick) choose(d.pick, t);
+  else if (d.bgremove) removeBackground();
 });
+async function removeBackground() {
+  const b = S.background || {};
+  if (!await ask('Take the background video out?', `<b>${esc(b.name)}</b> moves to <code>.work/replaced/</code> in the project folder, and the film goes back to black there. Nothing is deleted.`, 'Take it out')) return;
+  try {
+    const r = await api('/api/bgremove', {});
+    toast(`Moved to ${r.kept[0]}`, 'warn');
+    simulateSoon(0);
+  } catch (e) { toast(e.message, 'err'); }
+  refresh();
+}
 document.addEventListener('click', e => { const im = e.target.closest('.thumbs img'); if (im) lightbox(im.src.replace(/\?.*$/, '') + '?h=1000', im.dataset.ref); });
 let lbRef = null;              // 'bright/IMG_1.jpg' when the lightbox shows an input photo
 function lightbox(src, ref = null) {
@@ -692,12 +717,14 @@ function conflictText(cs) {
 function conflictTitle(to, cs, old) {
   if (old) return `Replace ${old}?`;
   if (to === 'audio') return 'Replace the soundtrack?';
+  if (to === 'background') return 'Replace the background video?';
   return `Replace ${cs.length} file${cs.length > 1 ? 's' : ''} in ${to}?`;
 }
 function report(to, added, kept) {
   if (added.length) toast(`${kept.length ? 'Replaced' : 'Added'}: ${added.slice(0, 3).join(', ')}${added.length > 3 ? ` and ${added.length - 3} more` : ''}`);
   if (kept.length) toast(`Old version${kept.length > 1 ? 's' : ''} kept in ${kept[0].split('/').slice(0, 3).join('/')}/`, 'warn');
   if (to === 'audio' && added.length) run('/api/analyze', {});      // a new track needs a new analysis
+  if (to === 'background' && added.length) simulateSoon(0);
 }
 
 // ---------------------------------------------------------------- uploads
@@ -709,6 +736,12 @@ async function upload(to, files) {
     if (aud.length !== 1) { toast(aud.length ? 'One track at a time: drop a single audio file on the track box.' : 'None of that is an audio file this reads.', 'err'); return; }
     files = aud;
   }
+  if (to === 'background' && files.length > 1) {
+    const vids = files.filter(f => VIDEO_EXTS.includes(SF.extOf(f.name)));
+    if (vids.length !== 1) { toast(vids.length ? 'One background video: drop a single clip on its box.' : 'None of that is a video this reads.', 'err'); return; }
+    files = vids;
+  }
+  if (to === 'background' && files[0].size > 200e6) toast(`Copying ${fmtB(files[0].size)} into the project…`);
   const send = async (f, replace) => {
     const r = await fetch(`/api/upload?to=${encodeURIComponent(to)}&name=${encodeURIComponent(f.name)}${replace ? '&replace=1' : ''}`, {method: 'POST', body: f});
     const j = await r.json().catch(() => ({error: r.statusText}));
@@ -718,7 +751,7 @@ async function upload(to, files) {
     added.push(j.saved); kept.push(...(j.kept || []));
   };
   for (const f of files) { try { await send(f, false); } catch (e) { toast(e.message, 'err'); } }
-  if (skipped.length) toast(`Skipped ${skipped.length} file${skipped.length > 1 ? 's' : ''} that ${to === 'audio' ? "aren't audio" : skipped.length > 1 ? "aren't photos" : "isn't a photo"}`, 'warn');
+  if (skipped.length) toast(`Skipped ${skipped.length} file${skipped.length > 1 ? 's' : ''} that ${to === 'audio' ? "aren't audio" : to === 'background' ? "aren't video" : skipped.length > 1 ? "aren't photos" : "isn't a photo"}`, 'warn');
   if (conflicts.length && await ask(conflictTitle(to, conflicts), conflictText(conflicts))) {
     for (const c of conflicts) { try { await send(c.file, true); } catch (e) { toast(e.message, 'err'); } }
   }
@@ -746,11 +779,12 @@ async function choose(to, btn, old = null) {
 }
 // Files and folders from Finder: onto the track box or a pool box.
 const AUDIO_EXTS = ['.wav', '.aif', '.aiff', '.flac', '.mp3', '.m4a', '.aac', '.ogg'];          // analysis.AUDIO_EXTS
+const VIDEO_EXTS = ['.3gp', '.avi', '.m4v', '.mkv', '.mov', '.mp4', '.mts', '.webm'];           // background.VIDEO_EXTS
 window.SF && SF.fileDrops({
   litClass: 'over',
   where: el => { const d = el && el.closest('.drop[data-to]'); return d ? d.dataset.to : null; },
   light: to => document.querySelector(`.drop[data-to="${to}"]`),
-  refused: () => toast('Drop onto the track box or one of the image boxes.', 'warn'),
+  refused: () => toast('Drop onto the track box, the background video box or one of the image boxes.', 'warn'),
   drop: (to, files) => upload(to, files),
 });
 // A photo already in a pool: drag its thumbnail onto another pool box to move it there.
@@ -883,6 +917,18 @@ const TUNE = [
     R('treatments.frame_jitter.intensity', 'gate weave', 0, 1, 0.01, 'The whole frame shifts a little at random each frame.', {toggle: 'treatments.frame_jitter.enabled'}),
     R('treatments.grain.intensity', 'grain', 0, 1, 0.01, 'Film grain on the characters.', {toggle: 'treatments.grain.enabled'}),
   ]},
+  {group: 'Background video', note: 'a clip instead of black (add it under Inputs); the last live frame shows it', items: [
+    {p: 'background.enabled', label: 'use it', kind: 'bool', hint: 'Off: black, as before. Nothing happens until there is a video in the background box.'},
+    {p: 'background.show_in', label: 'shows in', kind: 'select', options: ['black', 'silence'], hint: 'black: every frame that would be black (silence, before the first hit, after a shot fades). silence: only where the track itself is silent.'},
+    R('background.level', 'brightness', 0, 1, 0.01, 'How bright the video is, so the photos stay the brightest thing.'),
+    {p: 'background.style', label: 'drawn as', kind: 'select', options: ['ascii', 'plain'], hint: 'ascii: in characters, like the photos. plain: the video itself, dimmed.'},
+    R('background.cols', 'columns', 2, 300, 1, 'Characters across the frame for the video (ascii). It holds steady while the photos follow the sound.'),
+    {p: 'background.chars', label: 'characters', kind: 'chars', empty: true, hint: 'The video\'s characters, sparse to dense (ascii). Empty: the photos\' set for the moment.'},
+    R('background.color', 'colour', 0, 1, 0.01, '0 = the mono tint, 1 = the video\'s own colours (ascii).'),
+    {p: 'background.clock', label: 'timing', kind: 'select', options: ['film', 'gaps'], hint: 'film: the video runs under the whole film; each gap is a window onto it. gaps: it only moves while it shows, so each gap carries on where the last stopped.'},
+    R('background.start', 'start at (s)', 0, 600, 0.1, 'Where in the video it begins. It loops at its end.'),
+    R('background.fade_frames', 'fade in (f)', 0, 24, 1, 'Frames it takes to come up after a photo. 0 = at once.'),
+  ]},
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);
 const same = (a, b) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : a === b;
@@ -910,7 +956,7 @@ function rowHTML(it) {
   } else if (it.kind === 'color') {
     ctl = `<span class="colorpair">${isHex(v) ? `<input type="color" data-p="${it.p}" data-kind="color" value="${v}">` : ''}<input class="in" data-p="${it.p}" data-kind="text" value="${esc(v)}"></span>`;
   } else if (it.kind === 'chars') {
-    ctl = `<input class="in chars" data-p="${it.p}" data-kind="text" value="${esc(v)}" spellcheck="false">`;
+    ctl = `<input class="in chars" data-p="${it.p}" data-kind="text" value="${esc(v)}" spellcheck="false"${it.empty ? ' data-empty="1" placeholder="(the photos\' set)"' : ''}>`;
   }
   return `<div class="trow" data-row="${it.p}">${label}${ctl}${reset}</div>`;
 }
@@ -963,7 +1009,7 @@ $('#tune').addEventListener('input', e => {
     row.querySelector('[data-kind=text]').value = el.value; setValue(p, el.value);
   } else if (kind === 'text' || kind === 'select') {
     if (kind === 'text' && row.querySelector('[data-kind=color]') && isHex(el.value)) row.querySelector('[data-kind=color]').value = el.value;
-    if (el.value !== '') setValue(p, el.value);
+    if (el.value !== '' || el.dataset.empty) setValue(p, el.value);
   }
 });
 $('#tune').addEventListener('click', e => {
@@ -1008,7 +1054,7 @@ async function simulate() {
     $('#lookImg').hidden = !r.look; $('#lookEmpty').hidden = !!r.look;
     if (r.look) $('#lookImg').src = r.look;
     else $('#lookEmpty').textContent = 'No cuts after the preview start.';
-    $('#lookCap').textContent = `first cuts from ${fmtT(t)} (the preview start), ${dirty ? 'with your unsaved changes' : 'as saved'}`;
+    $('#lookCap').textContent = `first cuts from ${fmtT(t)} (the preview start)${r.background ? ', then the background video' : ''}, ${dirty ? 'with your unsaved changes' : 'as saved'}`;
     drawStats(r.stats, dirty ? savedStats : null);
     secStats = r.stats.sections || null; if (SS && $('#seclist')) drawSecList();
   } catch (e) {
@@ -1047,6 +1093,7 @@ function drawStats(s, was) {
     <div class="srow"><div class="sl"><span>columns</span><span><b>${s.cols.low}–${s.cols.high}</b>, typically ${s.cols.median}${d(s.cols.median, was && was.cols.median)}</span></div></div>
     <div class="srow"><div class="sl"><span>colour</span><span>mono ${pct(s.colour.mono)} · colour ${pct(s.colour.colour)} · in between ${pct(1 - s.colour.mono - s.colour.colour)}</span></div></div>
     <div class="srow"><div class="sl"><span>layered</span><span>${pct(s.layered)} of visible frames</span></div></div>
+    ${s.background || (was && was.background) ? `<div class="srow"><div class="sl"><span>background video</span><span>${pct(s.background || 0)} of the film${d(s.background || 0, was && (was.background || 0), pct)}</span></div></div>` : ''}
     ${s.warnings.map(w => `<div class="note warn" style="margin-top:8px">${esc(w)}</div>`).join('')}`);
 }
 

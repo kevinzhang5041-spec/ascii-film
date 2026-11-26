@@ -16,6 +16,8 @@ from scipy.ndimage import gaussian_filter1d
 
 import ascii_film as af
 
+from . import background as bgvideo
+
 POOLS = ("bright", "texture", "dark")
 
 
@@ -118,9 +120,10 @@ class _Picker:
 
 
 def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None,
-                sections: list[dict] | None = None) -> Score:
+                sections: list[dict] | None = None, background: dict | None = None) -> Score:
     """views: {photo path: hand crop} from images/crops.json (photos.views_for).
-    sections: from sets.sections_for: which photos each stretch of the track may use (None: all, everywhere)."""
+    sections: from sets.sections_for: which photos each stretch of the track may use (None: all, everywhere).
+    background: from background.plan: the video that shows instead of black (None: black)."""
     views = views or {}
     fps, n = an.fps, an.n
     ed, asc, tr = cfg["editing"], cfg["ascii"], cfg["treatments"]
@@ -298,6 +301,8 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
             flatness=round(float(flat[k]), 3), density=round(float(density[k]), 2),
         ))
 
+    bgvideo.assign(rows, cfg, background)       # after the edit: it changes no cut, only what the black shows
+
     warnings = [f"images/{p}/ has too few images for no_repeat_within={ed['no_repeat_within']}: "
                 f"some images repeat sooner" for p in sorted(picker.warned) if p in POOLS]
     if "a section" in picker.warned:
@@ -317,7 +322,7 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
 EDL_COLUMNS = ["frame", "time", "section", "kind", "onset", "strength", "shot", "pool", "name", "view", "crop",
                "layer_name",
                "layer_alpha",
-               "flash", "hold", "gain", "cols", "band", "mix", "expo", "cjit", "rms", "rms_db", "centroid",
+               "flash", "hold", "gain", "background", "cols", "band", "mix", "expo", "cjit", "rms", "rms_db", "centroid",
                "centroid_hz", "flatness", "density", "reason"]
 
 
@@ -336,7 +341,7 @@ def write_edl(rows: list[dict], bands: list[dict], path: Path) -> None:
         for r in rows:
             vals = dict(r, band=bands[r["band"]]["name"], onset=int(r["onset"]), flash=int(r["flash"]),
                         crop=" ".join(f"{x:g}" for x in r["crop"]) if r["crop"] else "",
-                        view=_view_str(r.get("view")))
+                        view=_view_str(r.get("view")), background=r["bg"] if r.get("bg", -1) >= 0 else "")
             w.writerow([vals[c] for c in EDL_COLUMNS])
 
 

@@ -23,6 +23,7 @@ Put your files here:
 | `images/bright/` | scans for high, glassy sounds (jpg / png / heic) |
 | `images/texture/` | scans for the middle of the spectrum |
 | `images/dark/` | scans for low, heavy sounds |
+| `background/video.mov` | optional: a clip that plays instead of black (`.mp4` / `.m4v` work too) |
 
 Then:
 
@@ -89,6 +90,20 @@ You can split the track into **sections** and give each one its own photos:
 
 Each row shows the section's cuts, its photos per pool and how often each one comes back (green / amber / red, as in the sorter). *Preview this* sets the preview range to the section. Everything saves straight away, to `images/sets.json`, and the next render follows it. Sections don't change `config.yaml`, so a saved look in `looks/` works with any sections. In a `--debug` render the overlay names the section, and the EDL has a `section` column.
 
+### A background video instead of black
+
+Between and around the shots the film is black: before the first hit, after a shot fades out, and in silence. Put a clip at `background/video.mov` (or use *Add…* on the dashboard's **background video** box) and it plays there instead. The cuts don't change at all. Only what fills the black does.
+
+The options are under `background:` in `config.yaml`, and in Tune → **Background video**:
+
+- **shows in:** `black` (every frame that would be black) or `silence` (only where the track itself is silent).
+- **brightness:** 0-1. It starts at 0.5, so the photos stay the brightest thing on screen.
+- **drawn as:** `ascii`, in characters like the photos, at its own steady **columns**, **characters** and **colour**; or `plain`, the video itself, dimmed. Either way it gets the film's grain and gate weave. Like the photos, the clip is auto-levelled, with one stretch for the whole clip so it doesn't flicker.
+- **timing:** `film` means the video runs under the whole film and each gap is a window onto it. `gaps` means it only moves while it shows, so each gap carries on where the last one stopped. Either way it starts at **start at** and loops at its end.
+- **fade in:** frames it takes to come up after a photo (0 = at once). Most gaps in a busy track are only a frame or two long, so a fade keeps it faint there.
+
+*Remove…* on the box takes the clip out of the film by moving it to `.work/replaced/`. *use it* in Tune turns it off and leaves the file where it is. Without a clip, or with it off, the film is exactly what it was before. The EDL's `background` column gives the video's frame number for each frame that shows it, and the `--debug` overlay names it too.
+
 ### Sorting photos automatically
 
 ```bash
@@ -116,6 +131,7 @@ This opens http://127.0.0.1:8778 in your browser. Stop it with Ctrl-C in that te
 
 - **Inputs:** click *Add…* on the track, bright, texture or dark box to open the macOS file chooser (Cmd-click or Cmd-A picks several images). The files are copied in and your originals stay where they are. In Safari or Chrome you can also drag files, or a whole folder of photos, from Finder onto a box; files that aren't photos are skipped, and the track box takes one audio file at a time. The Claude app's browser pane doesn't accept drags from Finder, so use *Add…* there. To move a photo to another pool, drag its thumbnail onto that pool's box (this works in the pane too). To swap files:
   - **Track:** click *Replace…* on the track box, or drop a new track on it.
+  - **Background video:** *Add…* / *Replace…* on its box, or drop one clip on it. *Remove…* takes it out of the film (see *A background video instead of black*).
   - **Photo:** click a thumbnail, then *Replace…*. The new photo goes into that pool with its own name.
   - **Same name:** adding a photo whose name is already in the pool offers to replace it.
 
@@ -125,7 +141,7 @@ This opens http://127.0.0.1:8778 in your browser. Stop it with Ctrl-C in that te
 - **Sections:** split the track into parts and choose which photo sets each part uses (see *Sections* above).
 - **Analysis:** *Analyse* draws `analysis.png`. *Plot preview range* zooms the plot to the preview range.
 - **Renders:** play, verify, export stills and open the contact sheet for any render. *sync report* shows the verify results.
-- **Tune:** sliders, switches and colour pickers for every rule: cuts and timing, photo pools, resolution, character sets, colour, brightness and the treatments. Hover over a label for what it does. Before you save, the right side shows the effect on the whole film: cuts, flashes, the cuts per pool, how much is black, character sets, columns and colour. Each changed number also shows what it was. It also draws the first cuts from the preview start with the new settings. Changed rows turn amber, ↺ puts one back to its default, and *Discard* drops all unsaved changes. *Save* writes only the changed values into `config.yaml`, leaving comments and layout alone, and keeps the old version. *Save & render preview* saves, then renders the preview range. Onset sensitivity re-analyses the track, so its numbers take a second or two.
+- **Tune:** sliders, switches and colour pickers for every rule: cuts and timing, photo pools, resolution, character sets, colour, brightness, the treatments and the background video. Hover over a label for what it does. Before you save, the right side shows the effect on the whole film: cuts, flashes, the cuts per pool, how much is black, character sets, columns and colour. Each changed number also shows what it was. It also draws the first cuts from the preview start with the new settings. Changed rows turn amber, ↺ puts one back to its default, and *Discard* drops all unsaved changes. *Save* writes only the changed values into `config.yaml`, leaving comments and layout alone, and keeps the old version. *Save & render preview* saves, then renders the preview range. Onset sensitivity re-analyses the track, so its numbers take a second or two.
 - **config.yaml:** edit the rules right on the page. *Save* checks the file first and refuses one that wouldn't load. Every save copies the previous version to `.work/config-history/`. *Save & render preview* saves and then re-renders the current range. ⌘S saves.
 
 Jobs run one at a time, and the Activity panel shows their progress and output. `--root testrun` points the dashboard at the test folder.
@@ -153,7 +169,7 @@ Defaults live in `soundfilm/defaults.yaml`. A key you delete from `config.yaml` 
 ## What a render leaves in `renders/`
 
 - `film_seed1.mp4`: H.264 1920x1080 24 fps (x264 `veryfast`, CRF 18) plus the original audio (AAC 320k)
-- `film_seed1.edl.csv`: one line per frame: cut / hold / decay / black / silence, the image, and the reason
+- `film_seed1.edl.csv`: one line per frame: cut / hold / decay / black / silence, the image, the background video's frame if it shows, and the reason
 - `film_seed1.json`: seed, frame range, sizes, config digest
 - `film_seed1.fp.npy`: a thumbnail of every frame as it went into the encoder (used by `verify`)
 - `film_seed1.verify.json`, `film_seed1_contact.png`, `film_seed1_stills/`: written by `verify` and `stills`
@@ -175,12 +191,12 @@ That analyses the track, renders the full film, a `--debug` film and a 13-17 s p
 - **plan**: every cut in the EDL sits on an onset frame, and every onset frame has a cut
 - **frames**: the decoded video matches, frame by frame, what the renderer sent to the encoder. So nothing was dropped, duplicated or shifted.
 - **audio**: the muxed soundtrack is cross-correlated with the original at points from start to end. It passes if it's within 1 ms everywhere, which also rules out drift. A delay of 10 ms shows up as 480 samples and fails. Onsets re-detected from the AAC are listed for information. In a dense track a few land on a neighbouring peak, which is the detector, not timing.
-- **blind**: from pixels and sound only: for each isolated onset, does the biggest burst of new light happen on that exact frame?
+- **blind**: from pixels and sound only: for each isolated onset, does the biggest burst of new light happen on that exact frame? Onsets right next to the background video are left out, because the video brings light of its own when a shot ends.
 - **duration**: the video and audio streams match the track (or the preview range)
 - **truth** (test track only): detected onsets vs the times the sounds were actually placed at
 
 ## Code
 
-`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `sets.py` (photo sets and track sections), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html`, `web/sort.html` and `web/drag.js` (`./film dashboard`), `__main__.py` (the `./film` command).
+`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `sets.py` (photo sets and track sections), `background.py` (the video instead of black), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html`, `web/sort.html` and `web/drag.js` (`./film dashboard`), `__main__.py` (the `./film` command).
 
 Speed: about 190 frames/s at 1080p on an Apple M5 Pro, so a 3-minute film takes about 25 s.

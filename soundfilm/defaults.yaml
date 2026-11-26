@@ -9,6 +9,7 @@ seed: 1                         # same seed + same inputs + same config = the sa
 paths:                          # relative to the project folder (./film --root DIR, default: this folder)
   audio: audio/track            # extension optional: .wav .aif .flac .mp3 .m4a
   images: images                # holds bright/ dark/ texture/ (jpg, png, heic)
+  background: background/video  # optional clip for the silences; extension optional: .mov .mp4 .m4v
   analysis: analysis.json
   renders: renders
 
@@ -63,6 +64,20 @@ editing:
     strength_above: 0.9
     ink: "#000000"              # black text...
     paper: "#ffffff"            # ...on white
+
+background:                     # a video instead of the black between and around the shots (paths.background)
+  enabled: true                 # nothing changes until there is a video; false: black as before
+  show_in: black                # black: every frame that would be black (silence, the wait before the first hit,
+                                # and after a shot fades out) | silence: only where the track itself is silent
+  level: 0.5                    # brightness of the video, 0-1, so the photos stay the brightest thing
+  style: ascii                  # ascii: drawn in characters like the photos | plain: the video itself, dimmed
+  cols: 100                     # ascii: characters across the frame; it holds steady while the photos follow the sound
+  chars: " .:-=+*#%@"           # ascii: its characters ("" = the photos' set for the moment, from the sound)
+  color: 1.0                    # ascii: 0 = the mono tint, 1 = the video's own colours
+  clock: film                   # film: the video runs under the whole film, each silence is a window onto it
+                                # gaps: it only moves while it shows, so each silence carries on where the last stopped
+  start: 0.0                    # seconds into the video where it begins; it loops at its end
+  fade_frames: 0                # frames it takes to come up after a photo (0 = at once)
 
 ascii:
   resolution:                   # RMS -> characters across the frame

@@ -32,7 +32,7 @@ import numpy as np
 import ascii_film as af
 import dashboard as ascii_dashboard          # the ./ascii dashboard: reuse its HTTP plumbing (video range requests)
 
-from . import analysis, config, photos, plot, render, score, sets, verify
+from . import analysis, background, config, photos, plot, render, score, sets, verify
 
 WEB = Path(__file__).resolve().parent / "web"
 ROOT = Path(".")                              # set by serve()
@@ -207,6 +207,49 @@ def _pools(cfg) -> dict:
     return out
 
 
+def _background_input(cfg) -> dict:
+    """The background video for the Inputs panel: what it is and whether the film uses it."""
+    b = cfg["background"]
+    out = {"expected": cfg["paths"]["background"], "enabled": bool(b["enabled"]), "show_in": b["show_in"],
+           "style": b["style"]}
+    p = background.find(ROOT, cfg)
+    if p is None:
+        return out
+    out.update(name=rel(p), bytes=p.stat().st_size)
+    try:
+        info = background.probe(p)
+        out.update(duration=round(info.duration, 2), size=f"{info.width}x{info.height}", fps=round(info.fps, 2),
+                   thumb=f"/thumb/background/{quote(p.name)}?v={_mtime(p) // 1_000_000}&t={float(b['start']):g}")
+    except (RuntimeError, OSError) as e:
+        out["error"] = str(e)
+    return out
+
+
+def background_thumb(name: str, h: int = 120) -> bytes:
+    """A frame of the background video where it starts, cropped to the film's 16:9, as a JPEG."""
+    cfg, _, _ = load_cfg()
+    p = background.find(ROOT, cfg)
+    if p is None or p.name != Path(name).name:
+        raise FileNotFoundError(f"background/{name}")
+    h = max(40, min(1080, int(h)))
+    t = float(cfg["background"]["start"])
+    key = ("bg", str(p), _mtime(p), h, t)
+    with _THUMB_LOCK:
+        if key in _THUMBS:
+            return _THUMBS[key]
+    info = background.probe(p)
+    cw, ch = (info.height * 16 / 9, info.height) if info.width / info.height > 16 / 9 else (info.width, info.width * 9 / 16)
+    s = min(1.0, h / ch)
+    img = af.grab_frame(info, t, af.even(info.width * s), af.even(info.height * s))
+    ih, iw = img.shape[:2]
+    w2, h2 = min(iw, round(cw * s)), min(ih, round(ch * s))
+    img = img[(ih - h2) // 2:(ih - h2) // 2 + h2, (iw - w2) // 2:(iw - w2) // 2 + w2]
+    body = cv2.imencode(".jpg", cv2.cvtColor(img, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 82])[1].tobytes()
+    with _THUMB_LOCK:
+        _THUMBS[key] = body
+    return body
+
+
 def _verify_info(video: Path) -> dict | None:
     p = render.sidecar(video, ".verify.json")
     if not p.exists():
@@ -262,6 +305,7 @@ def state() -> dict:
     track.pop("path", None)
     out["track"] = track
     out["pools"] = _pools(cfg)
+    out["background"] = _background_input(cfg)
     out["renders"] = _renders(cfg)
     out["plots"] = [{"name": p.name, "url": url(p)}
                     for p in sorted(ROOT.glob("analysis*.png"), key=lambda p: (p.name != "analysis.png", p.name))]
@@ -385,6 +429,13 @@ def plan(cfg: dict, to: str, name: str, old: str | None = None) -> tuple[Path, l
         if dest.suffix.lower() != ext:
             raise Refused(f"config paths.audio wants {rel(dest)}; this is a {ext} file", 415)
         return dest, _track_files(cfg)
+    if to == "background":
+        if not name or name.startswith(".") or ext not in background.VIDEO_EXTS:
+            raise Refused(f"{name or 'file'}: not a video this reads ({', '.join(background.VIDEO_EXTS)})", 415)
+        dest = background.dest(ROOT, cfg, ext)
+        if dest.suffix.lower() != ext:
+            raise Refused(f"config paths.background wants {rel(dest)}; this is a {ext} file", 415)
+        return dest, background.files(ROOT, cfg)
     if to in score.POOLS or to == "inbox":
         if not name or name.startswith(".") or ext not in af.IMAGE_EXTS:
             raise Refused(f"{name or 'file'}: not an image this reads ({', '.join(sorted(af.IMAGE_EXTS))})", 415)
@@ -494,7 +545,7 @@ def act_choose(req: dict) -> dict:
     """Pick files in the macOS chooser and add them. Ones that would replace something come back as
     `conflicts` with a token; the page asks, then sends the token to act_confirm."""
     to, old = str(req.get("to", "")), req.get("old") or None
-    if to != "audio" and to not in score.POOLS and to != "inbox":
+    if to not in ("audio", "background", "inbox") and to not in score.POOLS:
         raise ValueError(f"unknown destination {to!r}")
     if old:
         cfg, _, _ = load_cfg()
@@ -502,9 +553,11 @@ def act_choose(req: dict) -> dict:
         what = f"a photo to replace {old}"
     elif to == "audio":
         what = "the soundtrack (wav, flac, mp3, m4a, aiff)"
+    elif to == "background":
+        what = "a video for the black frames (mov, mp4, m4v)"
     else:
         what = f"images for {to} (Cmd-click or Cmd-A to pick several)"
-    paths = choose_files(f"Choose {what}", multiple=to != "audio" and not old)
+    paths = choose_files(f"Choose {what}", multiple=to not in ("audio", "background") and not old)
     if paths is None:
         return {"cancelled": True, "saved": [], "kept": [], "errors": [], "conflicts": []}
     out = _add_paths(to, paths, replace=False, old=old)
@@ -528,6 +581,16 @@ def act_confirm(req: dict) -> dict:
     for c in out["conflicts"]:
         c.pop("src")
     return out
+
+
+def act_bgremove(req: dict) -> dict:
+    """Take the background video out of the film. It moves to .work/replaced/<stamp>/; nothing is deleted."""
+    cfg, _, _ = load_cfg()
+    fs = background.files(ROOT, cfg)
+    if not fs:
+        raise FileNotFoundError("there's no background video")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return {"kept": [rel(retire(p, stamp)) for p in fs]}
 
 
 # --------------------------------------------------------------------------- actions
@@ -707,32 +770,47 @@ def score_stats(sc) -> dict:
         cols=dict(low=cols[len(cols) // 20], median=cols[len(cols) // 2], high=cols[-1 - len(cols) // 20]),
         colour=dict(mono=sum(r["mix"] < 0.25 for r in vis) / nv, colour=sum(r["mix"] > 0.75 for r in vis) / nv),
         layered=sum(bool(r["layer"]) for r in vis) / nv,
+        background=sum(r.get("bg", -1) >= 0 for r in rows) / n,
         photos=len({r["name"] for r in cuts}), warnings=sc.warnings)
 
 
-def _look(cfg: dict, sc, t: float, views: dict, n: int = 4) -> str | None:
-    """The first n cut frames from t seconds, 960x540 each, tiled 2x2 with a label: a JPEG data URL."""
+def _look(cfg: dict, sc, t: float, views: dict, n: int = 4, bg: dict | None = None) -> str | None:
+    """The first n cut frames from t seconds, 960x540 each, tiled 2x2 with a label: a JPEG data URL.
+    With a background video, the last tile is its first frame from t instead."""
     import base64
     from .frames import FrameRenderer
     fps = cfg["video"]["fps"]
     k0 = int(round(max(0.0, t) * fps))
     picks = [r for r in sc.rows[k0:] if r["kind"] == "cut"][:n]
+    if bg:
+        shown = [r for r in sc.rows[k0:] if r["bg"] >= 0]
+        full = [r for r in shown if r["bg_gain"] >= float(cfg["background"]["level"]) - 1e-6]
+        if shown:
+            picks = picks[:n - 1] + [(full or shown)[0]]
     if not picks:
         return None
     W, H = 960, 540
+    bkey = [cfg["background"], bg["path"], _mtime(Path(bg["path"])), bg["levels"]] if bg else None
     key = config.digest([cfg["ascii"], cfg["treatments"], cfg["editing"]["flash"], cfg["seed"],
-                         [b["chars"] for b in sc.bands], views])
+                         [b["chars"] for b in sc.bands], views, bkey])
     if _SIM.get("fr_key") != key:
-        _SIM.update(fr_key=key, fr=FrameRenderer(cfg, sc.bands, W, H, af.find_font(), int(cfg["seed"]), views=views))
+        if _SIM.get("fr"):
+            _SIM["fr"].close()
+        _SIM.update(fr_key=key, fr=FrameRenderer(cfg, sc.bands, W, H, af.find_font(), int(cfg["seed"]), views=views,
+                                                 background=bg))
     fr = _SIM["fr"]
     tiles = []
     for r in picks:
         img = fr.render(r)
-        lab = f"{r['frame'] / fps:7.2f}s  {r['pool']}  {sc.bands[r['band']]['name']}  {r['cols']} cols" + \
-              ("  FLASH" if r["flash"] else "")
+        if r["image"] is None:
+            lab = f"{r['frame'] / fps:7.2f}s  background video ({r['kind']})  frame {r['bg']}"
+        else:
+            lab = f"{r['frame'] / fps:7.2f}s  {r['pool']}  {sc.bands[r['band']]['name']}  {r['cols']} cols" + \
+                  ("  FLASH" if r["flash"] else "")
         cv2.rectangle(img, (0, H - 30), (W, H), (0, 0, 0), -1)
         cv2.putText(img, lab, (10, H - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 230), 1, cv2.LINE_AA)
         tiles.append(img)
+    fr.close()                                            # stop the background video's decoder
     while len(tiles) < n:
         tiles.append(np.zeros((H, W, 3), np.uint8))
     grid = np.vstack([np.hstack(tiles[i:i + 2]) for i in range(0, n, 2)])
@@ -752,13 +830,22 @@ def act_simulate(req: dict) -> dict:
         an = _sim_analysis(cfg)
         pools = score.gather_pools(ROOT, cfg, ROOT / ".work")
         views = photos.views_for(ROOT, cfg, pools)
-        sc = score.build_score(an, cfg, pools, int(cfg["seed"]), views, sets.sections_for(ROOT, cfg, pools, an.fps, an.n))
+        try:
+            bg = background.plan(ROOT, cfg)
+        except (SystemExit, RuntimeError, OSError) as e:
+            bg, bg_err = None, f"background video: {e}"
+        else:
+            bg_err = None
+        sc = score.build_score(an, cfg, pools, int(cfg["seed"]), views, sets.sections_for(ROOT, cfg, pools, an.fps, an.n),
+                               bg)
         out = {"stats": score_stats(sc), "onsets": len(an.onset_frames), "duration": an.duration,
-               "warnings": sc.warnings}
+               "warnings": sc.warnings + ([bg_err] if bg_err else [])}
+        out["stats"]["warnings"] = out["warnings"]
+        out["background"] = bool(bg)
         out["stats"]["usage"] = score.pool_usage(sc, pools, an.fps)["pools"]
         out["stats"]["sections"] = sc.sections
         if req.get("look", True):
-            out["look"] = _look(cfg, sc, float(req.get("t") or 0), views)
+            out["look"] = _look(cfg, sc, float(req.get("t") or 0), views, bg=bg)
     return out
 
 
@@ -962,7 +1049,7 @@ ACTIONS = {"analyze": act_analyze, "plot": act_plot, "render": act_render, "veri
            "stills": act_stills, "config": act_save_config, "reveal": act_reveal, "choose": act_choose,
            "confirm": act_confirm, "tune": act_tune, "simulate": act_simulate, "move": act_move,
            "import": act_import, "crop": act_crop, "sets": act_sets, "members": act_members,
-           "sections": act_sections, "suggest": act_suggest}
+           "sections": act_sections, "suggest": act_suggest, "bgremove": act_bgremove}
 
 
 # --------------------------------------------------------------------------- HTTP
@@ -1002,6 +1089,10 @@ class Handler(ascii_dashboard.Handler):
             if path == "/api/edl":
                 return self._json(edl_frames(parse_qs(u.query).get("video", [""])[0]))
             m = re.fullmatch(r"/thumb/(\w+)/([^/]+)", path)
+            if m and m.group(1) == "background":
+                h = parse_qs(u.query).get("h", ["120"])[0]
+                return self._send(200, background_thumb(m.group(2), int(h) if h.isdigit() else 120), "image/jpeg",
+                                  {"Cache-Control": "max-age=3600"})
             if m:
                 q = {k: v[0] for k, v in parse_qs(u.query).items()}
                 h = q.get("h", "120")

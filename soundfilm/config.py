@@ -78,6 +78,12 @@ def _check(cfg: dict) -> None:
     p = cfg["editing"]["pools"]
     if p["dark_below"] > p["bright_above"]:
         raise SystemExit("config: editing.pools.dark_below must be <= bright_above")
+    b = cfg["background"]
+    for key, ok in (("show_in", ("silence", "black")), ("style", ("ascii", "plain")), ("clock", ("film", "gaps"))):
+        if b[key] not in ok:
+            raise SystemExit(f"config: background.{key} must be {' or '.join(ok)}, not {b[key]!r}")
+    if str(b["chars"]).strip() and len(set(str(b["chars"]))) < 2:
+        raise SystemExit('config: background.chars needs at least 2 different characters (or "" for the photos\' set)')
 
 
 def digest(obj) -> str:
@@ -212,6 +218,8 @@ def _insert(lines: list[str], path: list[str], new: str) -> None:
         pad = " " * (ind + 2 * (d + 1))
         last = depth + d == len(path) - 1
         new_lines.append(f"{pad}{k}: {new}" if last else f"{pad}{k}:")
+    if depth == 0 and at > 0 and lines[at - 1].strip():
+        new_lines.insert(0, "")                                # a new top-level section: a blank line before it
     lines[at:at] = new_lines
 
 

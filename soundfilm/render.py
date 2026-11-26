@@ -25,7 +25,7 @@ import numpy as np
 
 import ascii_film as af
 
-from . import analysis, config, debug, score
+from . import analysis, background, config, debug, score
 from .frames import FrameRenderer
 
 MIN_SEGMENT_FRAMES = 96
@@ -46,7 +46,8 @@ def _segment(job: dict) -> np.ndarray:
     """Draw and encode rows job['rows'] to job['out']. Returns their fingerprints."""
     W, H = job["W"], job["H"]
     overlay = debug.DebugOverlay(job["timeline"], job["cfg"], W, H, job["fps"]) if job["timeline"] else None
-    fr = FrameRenderer(job["cfg"], job["bands"], W, H, job["font"], job["seed"], overlay, job.get("views"))
+    fr = FrameRenderer(job["cfg"], job["bands"], W, H, job["font"], job["seed"], overlay, job.get("views"),
+                       job.get("background"))
     counter, cancel = _W.get("counter"), _W.get("cancel")
     enc = af.Encoder(Path(job["out"]), W, H, job["fps"], job["codec"], job["threads"])
     fps_ = np.zeros((len(job["rows"]), FP_SIZE[1], FP_SIZE[0], 3), np.uint8)
@@ -67,6 +68,8 @@ def _segment(job: dict) -> np.ndarray:
     except BaseException:
         enc.abort()
         raise
+    finally:
+        fr.close()
     if pending and counter is not None:
         with counter.get_lock():
             counter.value += pending
@@ -113,7 +116,12 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     if sections:
         log(f"{len(sections)} sections: " + ", ".join(f"{s['label']} from {s['start'] / an.fps:.1f}s"
                                                      for s in sections))
-    sc = score.build_score(an, cfg, pools, seed, views, sections)
+    bg = background.plan(root, cfg)                    # the video in place of black, if there is one
+    sc = score.build_score(an, cfg, pools, seed, views, sections, bg)
+    if bg:
+        b = cfg["background"]
+        log(f"background video {bg['name']} ({bg['frames'] / fps:.1f} s) in the {b['show_in']} frames: "
+            f"{sum(r['bg'] >= 0 for r in sc.rows) / fps:.1f} s of the film, {b['style']}, clock {b['clock']}")
     for w in sc.warnings:
         log("warning: " + w)
 
@@ -142,7 +150,7 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     cpu = os.cpu_count() or 4
     base = dict(cfg=cfg, bands=sc.bands, W=W, H=H, fps=fps, font=af.find_font(), seed=seed, codec=codec,
                 threads=max(2, cpu // nseg) if nseg > 1 else 0,
-                timeline=debug.timeline(an, sc) if debug_ else None, views=views)
+                timeline=debug.timeline(an, sc) if debug_ else None, views=views, background=bg)
     seg_jobs = [dict(base, rows=rows[bounds[i]:bounds[i + 1]], out=str(work / f"seg{i:03d}.mp4"))
                 for i in range(nseg)]
 
@@ -187,6 +195,7 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     secs = time.time() - t_start
     meta = dict(video=dst.name, seed=seed, fps=fps, first_frame=f0, end_frame=f1, frames=total, width=W, height=H,
                 debug=debug_, preview=list(preview) if preview else None, track=str(an.track),
+                background=bg["name"] if bg else None,
                 analysis_sha1=an.data["key"]["sha1"], config=config.digest(cfg), cuts=sum(r["kind"] == "cut"
                                                                                          for r in rows),
                 seconds=round(secs, 2), fps_rendered=round(total / secs, 1))

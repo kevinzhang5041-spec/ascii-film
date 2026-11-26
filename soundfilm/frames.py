@@ -4,6 +4,10 @@
         -> glyph indices (ascii_film.cell_glyphs) -> character jitter
         -> glyphs (ascii_film.draw_glyphs) -> grain -> gate weave -> (debug overlay)
 
+A frame with no photo is black, or the background video's frame (background.py) if the score gave it one:
+  video frame -> centre crop -> cells -> black point -> x level -> glyphs (or the picture itself, dimmed)
+        -> grain -> gate weave
+
 Per-frame randomness comes from generators seeded by (seed, frame), so frames can be drawn in any order,
 in any process, and always come out the same.
 """
@@ -17,6 +21,8 @@ import numpy as np
 from PIL import Image, ImageOps
 
 import ascii_film as af
+
+from .background import Reader
 
 
 def glyph_ramp(chars: str, font_path: str, sort: bool = True, keep_black: bool = True) -> str:
@@ -90,11 +96,14 @@ class FrameRenderer:
     """Turns score rows into (H, W, 3) RGB uint8 frames."""
 
     def __init__(self, cfg: dict, bands: list[dict], W: int, H: int, font_path: str, seed: int, overlay=None,
-                 views: dict | None = None):
+                 views: dict | None = None, background: dict | None = None):
         self.cfg, self.W, self.H, self.font, self.seed, self.overlay = cfg, W, H, font_path, seed, overlay
         self.views = views or {}                     # {photo path: hand crop {x, y, w, h}} (images/crops.json)
         a, cs = cfg["ascii"], cfg["ascii"]["charset"]
         self.ramps = [glyph_ramp(b["chars"], font_path, cs["sort_by_coverage"], cs["keep_black"]) for b in bands]
+        self.bgv, self._reader = background, None    # background.plan(): the video instead of black, if any
+        bc = str(cfg["background"]["chars"])
+        self.bg_ramp = glyph_ramp(bc, font_path, cs["sort_by_coverage"], cs["keep_black"]) if bc.strip() else None
         self.tint, self.bg = af.parse_color(a["tint"]), af.parse_color(a["background"])
         self.contrast = float(a["contrast"])
         self.auto_level = bool(a.get("auto_level", True))
@@ -191,11 +200,58 @@ class FrameRenderer:
             idx[mask] = rng.integers(1, n, k)
         return idx
 
+    # ---- the background video ------------------------------------------------------------------------
+    def background(self, row: dict) -> np.ndarray:
+        """The background video's frame row['bg'], at row['bg_gain'] brightness."""
+        W, H, b = self.W, self.H, self.cfg["background"]
+        plain = b["style"] == "plain"
+        if plain:
+            cols, rows = W, H
+        else:
+            cols, rows, _, _ = af.grid(W, H, int(b["cols"]))
+        if self._reader is None:                     # enough pixels for the finest use of them
+            self._reader = Reader(self.bgv, W / H, W if plain else max(256, cols * 4))
+        src = self._reader.frame(int(row["bg"]))
+        g = float(row["bg_gain"])
+        if plain:
+            out = cv2.resize(src, (W, H), interpolation=cv2.INTER_AREA if src.shape[1] > W else cv2.INTER_LINEAR)
+            lv = self.bgv.get("levels")
+            lo, k = (lv[0], 255 / (lv[1] - lv[0])) if lv else (0.0, 1.0)
+            out = np.clip((out.astype(np.float32) - lo) * (k * g), 0, 255).astype(np.uint8)
+            fill = (0, 0, 0)
+        else:
+            c = cv2.resize(src, (cols, rows), interpolation=cv2.INTER_AREA).astype(np.float32) * (1 / 255)
+            lv = self.bgv.get("levels")
+            if lv:                                   # the clip's own auto-level (one stretch for all of it)
+                c = np.clip((c - lv[0] / 255) * (255 / (lv[1] - lv[0])), 0, 1)
+            if self.saturation != 1.0:
+                lum = (c @ (af.LUMA * 255.0))[..., None]
+                c = np.clip(lum + (c - lum) * self.saturation, 0, 1)
+            if self.black_point > 0:
+                c = np.clip((c - self.black_point) * (1 / (1 - self.black_point)), 0, 1)
+            cells = (np.clip(c * g, 0, 1) * 255 + 0.5).astype(np.uint8)
+            fs = af.FrameStyle(cols=int(b["cols"]), mix=float(np.clip(b["color"], 0, 1)),
+                               chars=self.bg_ramp or self.ramps[row["band"]], tint=self.tint, bg=self.bg,
+                               contrast=self.contrast, invert=False)
+            out = af.draw_glyphs(af.cell_glyphs(cells, fs), cells, fs, W, H, self.font)
+            fill = fs.bg
+        if row["grain"] > 0:
+            out = self.grain(out, np.random.default_rng([self.seed, 25, row["frame"]]))
+        return shift(out, int(round(row["jx"] * W)), int(round(row["jy"] * H)), fill)
+
+    def close(self) -> None:
+        if self._reader is not None:
+            self._reader.close()
+            self._reader = None
+
     # ---- the frame -----------------------------------------------------------------------------------
     def render(self, row: dict) -> np.ndarray:
         W, H = self.W, self.H
         if row["image"] is None:
-            out = np.zeros((H, W, 3), np.uint8)                  # black leader
+            if self.bgv and row.get("bg", -1) >= 0:
+                out = self.background(row)
+            else:
+                out = np.zeros((H, W, 3), np.uint8)              # black leader
         else:
             rng = np.random.default_rng([self.seed, 22, row["frame"]])
             cols, rows, _, _ = af.grid(W, H, row["cols"])

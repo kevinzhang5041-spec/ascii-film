@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASCII Film Studio</title>
+<style>
+:root {
+  --bg: #0c0e0c; --panel: #131613; --panel-2: #191d19; --line: #232823; --line-2: #2f362f;
+  --text: #e7e9e4; --muted: #8f968d; --faint: #5f665e;
+  --accent: #a8d47f; --accent-ink: #0d160a; --accent-soft: rgba(168, 212, 127, .12);
+  --warn: #e7b65c; --warn-soft: rgba(231, 182, 92, .12);
+  --err: #ef7a6a; --err-soft: rgba(239, 122, 106, .12);
+  --info: #86b9e6; --info-soft: rgba(134, 185, 230, .12);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
+button, input, select { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+/* top bar */
+.top { display: flex; align-items: center; gap: 20px; padding: 14px 24px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 5; background: rgba(12, 14, 12, .92); backdrop-filter: blur(8px); }
+.brand { font: 600 15px var(--mono); letter-spacing: .02em; white-space: nowrap; }
+.brand .glyph { color: var(--accent); margin-right: 6px; }
+.brand .sub { color: var(--faint); font-weight: 400; }
+.summary { font: 12.5px var(--mono); color: var(--muted); display: flex; gap: 4px 14px; flex-wrap: wrap; }
+@media (max-width: 600px) { .top { flex-wrap: wrap; gap: 6px 16px; padding: 12px 16px; } }
+.summary b { color: var(--text); font-weight: 500; }
+.root { margin-left: auto; font: 12px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 38vw; cursor: pointer; }
+.root:hover { color: var(--muted); }
+.offline { color: var(--err); font: 12px var(--mono); }
+
+/* layout */
+main { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 16px; padding: 16px 24px 48px;
+  max-width: 1560px; margin: 0 auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+.h { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.h h2 { margin: 0; font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.h .grow { flex: 1; }
+@media (max-width: 1040px) { main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 40px; } .root { display: none; } }
+
+/* controls */
+.btn { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 7px 12px;
+  font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: border-color .15s, background .15s; }
+.btn:hover:not(:disabled) { border-color: #4a544a; background: #1e231e; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: #b8e08f; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 8px; }
+.btn.ghost:hover:not(:disabled) { color: var(--text); background: var(--panel-2); border-color: var(--line-2); }
+.btn.sm { padding: 5px 9px; font-size: 12px; }
+.in, select.in { background: #0f120f; border: 1px solid var(--line-2); border-radius: 8px; padding: 7px 9px;
+  font: 13px var(--mono); width: 100%; min-width: 0; }
+.in:focus, .btn:focus-visible, select:focus-visible { outline: 2px solid rgba(168, 212, 127, .4); outline-offset: 1px; }
+.in.bad { border-color: var(--err); }
+select.in { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+  linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-size: 5px 5px; background-repeat: no-repeat; padding-right: 26px; cursor: pointer; }
+.chk { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
+.chk input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+.seg button { background: transparent; border: 0; padding: 6px 11px; font: 12px var(--mono); color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--panel-2); color: var(--text); }
+
+/* stage */
+.stage-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.stage-bar select { max-width: 320px; }
+.readout { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+.screen { position: relative; background: #000; border-radius: 8px; aspect-ratio: 16 / 9; max-height: 64vh;
+  width: 100%; overflow: hidden; display: grid; place-items: center; border: 1px solid #000; }
+.screen img { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; image-rendering: auto; }
+.screen .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+  color: var(--faint); font: 13px var(--mono); line-height: 1.7; }
+@media (max-width: 600px) { .screen .empty { font-size: 12px; padding: 12px; } .screen .empty .more { display: none; } }
+.spin { position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .15); border-top-color: var(--accent); animation: rot .7s linear infinite; opacity: 0;
+  transition: opacity .2s; }
+.spin.on { opacity: 1; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.scrub { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.scrub input[type=range] { flex: 1; }
+.scrub .t { font: 12px var(--mono); color: var(--text); min-width: 92px; text-align: right; }
+input[type=range] { accent-color: var(--accent); height: 18px; }
+.caption { margin-top: 8px; font: 12px var(--mono); color: var(--faint); min-height: 18px; }
+.caption .err { color: var(--err); }
+
+/* look panel */
+.look { align-self: start; }
+.field { margin-bottom: 13px; }
+.field > label, .lab { display: flex; align-items: baseline; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.field > label span.hint { font: 11px var(--mono); color: var(--faint); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.chip { font: 11.5px var(--mono); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent;
+  color: var(--muted); cursor: pointer; }
+.chip:hover { color: var(--text); border-color: #4a544a; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.colorin { display: flex; gap: 6px; }
+.colorin input[type=color] { width: 34px; min-width: 34px; height: 33px; padding: 2px; background: #0f120f;
+  border: 1px solid var(--line-2); border-radius: 8px; cursor: pointer; }
+.chars { margin-top: 6px; font: 13px var(--mono); color: var(--text); background: #0f120f; border: 1px dashed var(--line-2);
+  border-radius: 6px; padding: 4px 8px; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.preset-desc { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 17px; }
+.modified { font: 11px var(--mono); color: var(--warn); }
+.sep { height: 1px; background: var(--line); margin: 16px 0 14px; }
+.savebox { display: grid; gap: 8px; margin-top: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: 10px; background: #101310; }
+.err-line { color: var(--err); font: 12px var(--mono); margin-top: 6px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; }
+details summary::before { content: "▸ "; color: var(--faint); }
+details[open] summary::before { content: "▾ "; }
+
+/* clips */
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar .divider { width: 1px; height: 22px; background: var(--line-2); margin: 0 4px; }
+.every { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.every .in { width: 58px; padding: 6px 7px; text-align: center; }
+.drop { margin: 14px 0 6px; border: 1.5px dashed var(--line-2); border-radius: 10px; padding: 14px 16px; display: flex;
+  align-items: center; gap: 14px; color: var(--muted); font-size: 13px; transition: border-color .15s, background .15s; }
+.drop.big { padding: 44px 20px; flex-direction: column; text-align: center; gap: 8px; }
+.drop .icon { font: 18px var(--mono); color: var(--accent); }
+.drop.big .icon { font-size: 26px; }
+.drop a { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.drop small { color: var(--faint); font: 11.5px var(--mono); }
+body.dragging .drop { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.uploads { display: grid; gap: 6px; margin: 8px 0; }
+.up { display: grid; grid-template-columns: minmax(0, 1fr) 160px auto; gap: 12px; align-items: center; font: 12px var(--mono); color: var(--muted); }
+.up .msg.err { color: var(--err); }
+.list { margin-top: 6px; }
+.clip { display: grid; grid-template-columns: 112px minmax(0, 1fr) 230px auto; gap: 16px; align-items: center;
+  padding: 10px 0; border-top: 1px solid var(--line); }
+.clip:first-child { border-top: 0; }
+.clip.sel .cname { color: var(--accent); }
+.thumb { width: 112px; height: 63px; object-fit: cover; border-radius: 6px; background: #000; display: block; cursor: pointer; }
+.cname { font: 500 13.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmeta { font: 12px var(--mono); color: var(--faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmeta .hdr { color: var(--warn); }
+.badge { display: inline-block; font: 11px/1 var(--mono); padding: 5px 8px; border-radius: 6px; background: #1c211c; color: var(--muted); }
+.badge.ok { color: var(--accent); background: var(--accent-soft); }
+.badge.warn { color: var(--warn); background: var(--warn-soft); }
+.badge.err { color: var(--err); background: var(--err-soft); }
+.badge.run { color: var(--info); background: var(--info-soft); }
+.cmsg { font: 11.5px var(--mono); color: var(--faint); margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar { height: 4px; background: #1f241f; border-radius: 2px; overflow: hidden; margin-top: 7px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .35s ease; }
+.cact { display: flex; gap: 6px; justify-content: flex-end; }
+@media (max-width: 760px) {
+  .clip { grid-template-columns: 84px minmax(0, 1fr); }
+  .thumb { width: 84px; height: 48px; }
+  .cstatus, .cact { grid-column: 2; }
+  .cact { justify-content: flex-start; }
+}
+
+/* film */
+.film-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1040px) { .film-grid { grid-template-columns: minmax(0, 1fr); } }
+.timeline { position: relative; height: 40px; background: #0f120f; border: 1px solid var(--line); border-radius: 8px;
+  display: flex; overflow: hidden; }
+.tseg { height: 100%; border-right: 2px solid #0f120f; padding: 5px 7px; font: 10.5px/1.35 var(--mono); color: var(--accent-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+.tseg:nth-child(odd) { background: #8fbf66; } .tseg:nth-child(even) { background: #6f9f4e; }
+.tseg small { display: block; opacity: .75; }
+.tcut { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, rgba(12, 14, 12, .72) 0 6px, rgba(12, 14, 12, .45) 6px 12px); }
+.tgap { position: absolute; top: 0; bottom: 0; border: 1.5px dashed var(--warn); border-left: 0; border-radius: 0 8px 8px 0; }
+.tmark { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--warn); }
+.tlegend { display: flex; justify-content: space-between; font: 11.5px var(--mono); color: var(--faint); margin-top: 6px; }
+.order { margin-top: 12px; font: 12px var(--mono); color: var(--muted); display: grid; gap: 3px; max-height: 170px; overflow: auto; }
+.order div { display: flex; gap: 10px; }
+.order span:first-child { color: var(--faint); width: 22px; text-align: right; }
+.order span.n { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.film-note { font: 12px var(--mono); margin-top: 10px; color: var(--muted); }
+.film-note.warn { color: var(--warn); }
+.assemble-row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 14px; }
+.assemble-row .field { margin: 0; }
+.assemble-row .in { width: 92px; }
+video { width: 100%; border-radius: 8px; background: #000; display: block; max-height: 56vh; }
+.final-meta { display: flex; align-items: center; gap: 10px; margin-top: 8px; font: 12px var(--mono); color: var(--muted); }
+.final-meta .grow { flex: 1; }
+.placeholder { border: 1px dashed var(--line-2); border-radius: 8px; aspect-ratio: 16/9; display: grid; place-items: center;
+  color: var(--faint); font: 12.5px var(--mono); text-align: center; padding: 20px; }
+.jobline { margin-top: 10px; font: 12px var(--mono); color: var(--info); }
+
+/* modal + toasts */
+.modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .78); z-index: 20; display: grid; place-items: center; padding: 3vh 3vw; }
+.modal-box { background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; width: min(1400px, 100%);
+  max-height: 94vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); font: 13px var(--mono); }
+.modal-head .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-body { overflow: auto; background: #000; display: grid; place-items: center; min-height: 200px; }
+.modal-body img { max-width: 100%; display: block; }
+.modal-body video { max-height: 84vh; border-radius: 0; }
+.toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 30; max-width: min(440px, 92vw); }
+.toast { background: #1b201b; border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 8px;
+  padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 30px rgba(0, 0, 0, .4); animation: in .2s ease; }
+.toast.err { border-left-color: var(--err); } .toast.warn { border-left-color: var(--warn); }
+@keyframes in { from { transform: translateY(8px); opacity: 0; } }
+.dropveil { position: fixed; inset: 0; z-index: 15; pointer-events: none; display: none; place-items: center;
+  background: rgba(12, 14, 12, .7); border: 3px dashed var(--accent); font: 600 18px var(--mono); color: var(--accent); }
+body.dragging .dropveil { display: grid; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="glyph">░▒▓</span>ascii film <span class="sub">studio</span></div>
+  <div class="summary" id="summary"></div>
+  <div class="root" id="root" title="Open the project folder in Finder"></div>
+</header>
+
+<main>
+  <!-- live preview -->
+  <section class="panel" aria-label="Preview">
+    <div class="h"><h2>Preview</h2></div>
+    <div class="stage-bar">
+      <select class="in" id="clipSel" aria-label="Clip"></select>
+      <div class="seg" id="modeSeg"><button data-mode="ascii" class="on">ASCII</button><button data-mode="source">Original</button></div>
+      <span class="readout" id="readout"></span>
+    </div>
+    <div class="screen">
+      <img id="frame" alt="" hidden>
+      <div class="empty" id="stageEmpty"><span>Drop iPhone clips or photos below to start.<span class="more"><br>The frame you pick here re-renders live as you change the look.</span></span></div>
+      <div class="spin" id="spin"></div>
+    </div>
+    <div class="scrub">
+      <input type="range" id="scrub" min="0" max="1" step="0.05" value="0" aria-label="Time in clip">
+      <span class="t" id="tlabel">0:00</span>
+    </div>
+    <div class="caption" id="caption"></div>
+  </section>
+
+  <!-- look -->
+  <aside class="panel look" aria-label="Look">
+    <div class="h"><h2>Look</h2><span class="grow"></span><span class="modified" id="modified" hidden>modified</span></div>
+    <div class="field">
+      <label for="presetSel">Preset</label>
+      <select class="in" id="presetSel"></select>
+      <div class="preset-desc" id="presetDesc"></div>
+    </div>
+    <div class="field">
+      <label for="f-cols">Columns <span class="hint">chars across</span></label>
+      <input class="in" id="f-cols" data-k="cols" spellcheck="false">
+      <div class="chips">
+        <button class="chip" data-set="cols" data-v="60">60</button>
+        <button class="chip" data-set="cols" data-v="120">120</button>
+        <button class="chip" data-set="cols" data-v="180">180</button>
+        <button class="chip" data-set="cols" data-v="0%:20,100%:160">20 → 160</button>
+        <button class="chip" data-set="cols" data-v="0%:160,100%:20">160 → 20</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="f-color">Colour <span class="hint">mono · color · 0–1</span></label>
+      <input class="in" id="f-color" data-k="color" spellcheck="false">
+      <div class="chips">
+        <button class="chip" data-set="color" data-v="mono">mono</button>
+        <button class="chip" data-set="color" data-v="0.5">half</button>
+        <button class="chip" data-set="color" data-v="color">color</button>
+        <button class="chip" data-set="color" data-v="0%:mono,100%:color">mono → color</button>
+        <button class="chip" data-set="color" data-v="0%:color,100%:mono">color → mono</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="f-charsetSel">Characters</label>
+      <select class="in" id="f-charsetSel"></select>
+      <input class="in" id="f-charsetCustom" spellcheck="false" placeholder=" .:-=+*#%@  (sparse → dense)" style="margin-top:6px" hidden>
+      <div class="chars" id="charsPreview"></div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="f-tint">Tint <span class="hint">mono glyphs</span></label>
+        <div class="colorin"><input type="color" id="c-tint" aria-label="Tint colour"><input class="in" id="f-tint" data-k="tint" spellcheck="false"></div>
+      </div>
+      <div class="field">
+        <label for="f-bg">Background</label>
+        <div class="colorin"><input type="color" id="c-bg" aria-label="Background colour"><input class="in" id="f-bg" data-k="bg" spellcheck="false"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="f-contrast">Contrast <span class="hint" id="contrastVal"></span></label>
+      <div class="colorin">
+        <input type="range" id="r-contrast" min="0.5" max="2.5" step="0.05" style="flex:1">
+        <input class="in" id="f-contrast" data-k="contrast" spellcheck="false" style="width:74px;flex:none">
+      </div>
+    </div>
+    <div class="field">
+      <label class="chk"><input type="checkbox" id="f-invert"> Invert <span class="hint" style="color:var(--faint);font:11px var(--mono)">dense glyphs in dark areas, for light backgrounds</span></label>
+    </div>
+    <details id="outDetails">
+      <summary>Output · <span id="outSummary"></span></summary>
+      <div class="row3" style="margin-top:10px">
+        <div class="field"><label for="s-fps">Frame rate</label>
+          <select class="in" id="s-fps"><option>24</option><option>25</option><option selected>30</option><option>60</option></select></div>
+        <div class="field"><label for="s-size">Long edge</label>
+          <select class="in" id="s-size"><option>1280</option><option selected>1920</option><option>2560</option><option>3840</option></select></div>
+        <div class="field"><label for="s-photo">Photo secs</label>
+          <input class="in" id="s-photo" type="number" min="0.5" step="0.5"></div>
+      </div>
+    </details>
+    <div class="err-line" id="lookErr" hidden></div>
+    <div class="sep"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="savePresetBtn">Save as preset…</button>
+      <button class="btn ghost" id="resetBtn" title="Reset to the selected preset">Reset</button>
+    </div>
+    <div class="savebox" id="saveBox" hidden>
+      <input class="in" id="presetName" placeholder="name, e.g. dusk" maxlength="40" spellcheck="false">
+      <input class="in" id="presetDescIn" placeholder="description (optional)" style="font-family:var(--sans)">
+      <div style="display:flex;gap:8px"><button class="btn primary sm" id="presetSave">Save preset</button><button class="btn ghost sm" id="presetCancel">Cancel</button></div>
+    </div>
+  </aside>
+
+  <!-- clips -->
+  <section class="panel wide" aria-label="Clips">
+    <div class="h">
+      <h2>Clips</h2><span class="grow"></span>
+      <div class="toolbar">
+        <label class="chk"><input type="checkbox" id="forceAll"> include already rendered</label>
+        <button class="btn primary" id="renderAll">Render all</button>
+        <span class="divider"></span>
+        <span class="every">contact sheet every <input class="in" id="every" type="number" min="1" step="1"> s</span>
+        <button class="btn" id="contactBtn">Make contact sheet</button>
+        <span class="divider"></span>
+        <button class="btn ghost" id="cancelAll" hidden>Cancel jobs</button>
+        <button class="btn ghost" data-open="input">Open input folder</button>
+      </div>
+    </div>
+    <div class="jobline" id="contactLine" hidden></div>
+    <div class="drop" id="drop">
+      <span class="icon">▒▓█</span>
+      <div>Drop .MOV clips and .HEIC / .JPG photos here, or <a id="choose">choose files</a>. You can also copy them into <code>input/</code> in Finder; they show up here on their own.<br><small>Uploads are copied into input/. A file whose name is already there is refused, never overwritten.</small></div>
+    </div>
+    <input type="file" id="fileIn" multiple hidden accept=".mov,.mp4,.m4v,.heic,.heif,.jpg,.jpeg,.png,.tif,.tiff,.webp,video/*,image/*">
+    <div class="uploads" id="uploads"></div>
+    <div class="list" id="list"></div>
+  </section>
+
+  <!-- film -->
+  <section class="panel wide" aria-label="Film">
+    <div class="h"><h2>Film</h2><span class="grow"></span><button class="btn ghost" data-open="output">Open output folder</button></div>
+    <div class="film-grid">
+      <div>
+        <div class="timeline" id="timeline"></div>
+        <div class="tlegend"><span>0:00</span><span id="tlegendEnd"></span></div>
+        <div class="film-note" id="filmNote"></div>
+        <div class="order" id="order"></div>
+        <div class="assemble-row">
+          <div class="field"><label for="length">Length</label><input class="in" id="length" spellcheck="false"></div>
+          <div class="field"><label for="fade">Fade (s)</label><input class="in" id="fade" type="number" min="0" step="0.25"></div>
+          <button class="btn primary" id="assembleBtn">Assemble film</button>
+        </div>
+        <div class="jobline" id="assembleLine" hidden></div>
+      </div>
+      <div id="finalBox"></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true">
+    <div class="modal-head"><span class="grow" id="modalTitle"></span><button class="btn sm" id="modalReveal">Show in Finder</button><button class="btn sm" id="modalClose">Close</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+<div class="dropveil">drop to add to input/</div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const KEYS = ["cols", "color", "charset", "tint", "bg", "contrast", "invert"];
+const STORE = "ascii-film-ui-v1";
+
+function fmt(s) {
+  s = Math.max(0, +s || 0);
+  let m = Math.floor(s / 60), r = s - m * 60;
+  let rs = Math.abs(r - Math.round(r)) < 0.05 ? String(Math.round(r)).padStart(2, "0") : r.toFixed(1).padStart(4, "0");
+  if (rs === "60") { m += 1; rs = "00"; }
+  return `${m}:${rs}`;
+}
+function parseDur(s) {
+  const parts = String(s).trim().split(":").map(Number);
+  if (!parts.length || parts.some(isNaN)) return NaN;
+  return parts.reduce((a, v) => a * 60 + v, 0);
+}
+function bytes(n) { return n > 1e9 ? (n / 1e9).toFixed(1) + " GB" : n > 1e6 ? (n / 1e6).toFixed(0) + " MB" : (n / 1e3).toFixed(0) + " KB"; }
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function toast(msg, kind = "") {
+  const t = document.createElement("div");
+  t.className = "toast " + kind; t.textContent = msg;
+  $("#toasts").append(t);
+  setTimeout(() => t.remove(), kind === "err" ? 9000 : 4500);
+}
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+// ---------------------------------------------------------------- state
+let S = null;                       // server state
+let ui = { style: null, settings: null, preset: "focus", clip: "", t: 0, mode: "ascii", every: 10, length: "3:00", fade: 1, force: false };
+try { Object.assign(ui, JSON.parse(localStorage.getItem(STORE) || "{}")); } catch (e) {}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(ui)); } catch (e) {} }
+const seenJobs = new Map();         // id -> status, to react when a job finishes
+let firstLoad = true, pollT = null, uploading = 0;
+
+function busy() { return uploading > 0 || (S && S.jobs.some(j => j.status === "queued" || j.status === "running")); }
+
+async function refresh() {
+  clearTimeout(pollT);
+  try {
+    const r = await fetch("/api/state");
+    S = await r.json();
+    $("#summary").classList.remove("offline");
+    apply();
+  } catch (e) {
+    $("#summary").innerHTML = `<span class="offline">dashboard server stopped. Run ./ascii dashboard again</span>`;
+  }
+  pollT = setTimeout(refresh, busy() ? 900 : 3000);
+}
+
+function fullStyle(st) { return Object.assign({}, S.defaults, st || {}); }
+function presetStyle(name) {
+  const p = (S.presets || {})[name];
+  if (!p) return fullStyle({});
+  const o = {}; KEYS.forEach(k => { if (p[k] !== undefined) o[k] = String(p[k]); });
+  return fullStyle(o);
+}
+function sameStyle(a, b) { return KEYS.every(k => String(a?.[k] ?? "").trim() === String(b?.[k] ?? "").trim()); }
+
+function apply() {
+  if (firstLoad) {
+    firstLoad = false;
+    if (ui.preset && !(S.presets || {})[ui.preset]) ui.preset = "";
+    if (!ui.style) ui.style = ui.preset ? presetStyle(ui.preset) : fullStyle({});
+    ui.settings = Object.assign({}, S.render_defaults, ui.settings || {});
+    buildLookControls();
+    writeLook(ui.style);
+    writeSettings();
+    $("#every").value = ui.every; $("#length").value = ui.length; $("#fade").value = ui.fade; $("#forceAll").checked = !!ui.force;
+    S.jobs.forEach(j => seenJobs.set(j.id, j.status));
+  }
+  $("#root").textContent = S.root;
+  renderSummary(); renderPresetSel(); renderClipSel(); renderClips(); renderFilm(); renderJobLines(); reactToJobs();
+}
+
+// ---------------------------------------------------------------- look controls
+function buildLookControls() {
+  const sel = $("#f-charsetSel");
+  sel.innerHTML = Object.keys(S.charsets).map(n => `<option value="${n}">${n}</option>`).join("") + `<option value="__custom">custom / schedule…</option>`;
+}
+function writeLook(st) {
+  st = fullStyle(st);
+  ["cols", "color", "tint", "bg", "contrast"].forEach(k => { $("#f-" + k).value = st[k]; });
+  const cs = String(st.charset);
+  if (S.charsets[cs.trim().toLowerCase()]) { $("#f-charsetSel").value = cs.trim().toLowerCase(); $("#f-charsetCustom").hidden = true; }
+  else { $("#f-charsetSel").value = "__custom"; $("#f-charsetCustom").hidden = false; $("#f-charsetCustom").value = cs; }
+  syncColor("tint"); syncColor("bg"); syncContrast();
+  const inv = String(st.invert).toLowerCase();
+  const box = $("#f-invert");
+  box.indeterminate = inv.includes(":");
+  box.checked = ["true", "1", "yes", "on"].includes(inv);
+  box.dataset.raw = st.invert;
+  charsPreview();
+}
+function readLook() {
+  const st = {};
+  ["cols", "color", "tint", "bg", "contrast"].forEach(k => { st[k] = $("#f-" + k).value.trim(); });
+  const cs = $("#f-charsetSel").value;
+  st.charset = cs === "__custom" ? $("#f-charsetCustom").value : cs;
+  const box = $("#f-invert");
+  st.invert = box.indeterminate ? box.dataset.raw : (box.checked ? "true" : "false");
+  return st;
+}
+function namedColor(v) {
+  v = String(v || "").trim().toLowerCase();
+  if (S.colors[v]) v = S.colors[v];
+  if (/^#?[0-9a-f]{3}$/.test(v)) v = "#" + v.replace("#", "").split("").map(c => c + c).join("");
+  if (/^#?[0-9a-f]{6}$/.test(v)) return v.startsWith("#") ? v : "#" + v;
+  const first = String(v).match(/:(#?[0-9a-z]+)/);           // schedule: show the first keyframe colour
+  return first ? namedColor(first[1]) : null;
+}
+function syncColor(k) { const c = namedColor($("#f-" + k).value); if (c) $("#c-" + k).value = c; }
+function syncContrast() {
+  const v = $("#f-contrast").value.trim(), n = parseFloat(v);
+  const isNum = /^\d*\.?\d+$/.test(v);
+  $("#r-contrast").disabled = !isNum;
+  if (isNum) $("#r-contrast").value = n;
+  $("#contrastVal").textContent = isNum ? (n === 1 ? "unchanged" : n > 1 ? "punchier" : "softer") : "schedule";
+}
+function charsPreview() {
+  const cs = $("#f-charsetSel").value;
+  const chars = cs === "__custom" ? $("#f-charsetCustom").value : S.charsets[cs];
+  $("#charsPreview").textContent = chars.includes(":") && cs === "__custom" ? "schedule: switches at each keyframe" : "⟨" + chars + "⟩";
+}
+function lookChanged() {
+  ui.style = readLook();
+  save(); renderPresetSel(); renderClips(); schedulePreview();
+}
+function writeSettings() {
+  $("#s-fps").value = String(ui.settings.fps); $("#s-size").value = String(ui.settings.size); $("#s-photo").value = ui.settings.photo_seconds;
+  $("#outSummary").textContent = `${ui.settings.fps} fps · ${ui.settings.size}px · photos ${ui.settings.photo_seconds}s`;
+}
+function settingsChanged() {
+  ui.settings = { fps: +$("#s-fps").value, size: +$("#s-size").value, photo_seconds: +$("#s-photo").value || 5 };
+  writeSettings(); save(); renderClipSel(); schedulePreview();
+}
+
+function renderPresetSel() {
+  const sel = $("#presetSel"), names = Object.keys(S.presets || {});
+  const html = `<option value="">— none (defaults) —</option>` + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  sel.value = ui.preset || "";
+  $("#presetDesc").textContent = ui.preset ? ((S.presets[ui.preset] || {}).description || "") : "Plain defaults: 120 columns, mono, white on black.";
+  $("#modified").hidden = sameStyle(ui.style, ui.preset ? presetStyle(ui.preset) : fullStyle({}));
+}
+
+// ---------------------------------------------------------------- live preview
+let pvTimer = null, pvAbort = null, pvURL = null;
+function currentClip() { return S && S.clips.find(c => c.name === ui.clip); }
+function clipDur(c) { return !c ? 0 : c.kind === "image" ? ui.settings.photo_seconds : (c.duration || 0); }
+
+function renderClipSel() {
+  const sel = $("#clipSel"), clips = S.clips.filter(c => c.kind !== "unknown");
+  const html = clips.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join("");
+  if (sel.dataset.html !== html) { sel.innerHTML = html || `<option value="">no clips yet</option>`; sel.dataset.html = html; }
+  if (!clips.find(c => c.name === ui.clip)) { const prev = ui.clip; ui.clip = clips[0]?.name || ""; if (prev !== ui.clip) { ui.t = 0; schedulePreview(); } }
+  sel.value = ui.clip; sel.disabled = !clips.length;
+  const c = currentClip(), d = clipDur(c);
+  const sc = $("#scrub"); sc.max = Math.max(0.05, d - 0.05).toFixed(2); sc.disabled = !c;
+  if (ui.t > d) ui.t = 0;
+  sc.value = ui.t;
+  $("#tlabel").textContent = `${fmt(ui.t)} / ${fmt(d)}`;
+  $("#stageEmpty").hidden = !!c; $("#frame").hidden = !c;
+  $("#readout").textContent = c ? `${c.width}×${c.height}${c.hdr ? " · HDR" : ""}${c.kind === "image" ? " · photo" : ""}` : "";
+}
+function schedulePreview(delay = 160) { clearTimeout(pvTimer); pvTimer = setTimeout(doPreview, delay); }
+async function doPreview() {
+  const c = currentClip();
+  if (!c) return;
+  if (pvAbort) pvAbort.abort();
+  pvAbort = new AbortController();
+  $("#spin").classList.add("on");
+  try {
+    const r = await fetch("/api/frame", { method: "POST", signal: pvAbort.signal, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file: c.name, t: ui.t, style: ui.style, settings: ui.settings, mode: ui.mode }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || r.statusText); }
+    const fs = r.headers.get("X-Frame-Style");
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const img = $("#frame");
+    img.onload = () => { if (pvURL && pvURL !== url) URL.revokeObjectURL(pvURL); pvURL = url; };
+    img.src = url;
+    $("#lookErr").hidden = true;
+    $$(".look .in").forEach(i => i.classList.remove("bad"));
+    if (ui.mode === "source") $("#caption").textContent = "original frame (what the renderer samples)";
+    else if (fs) {
+      const f = JSON.parse(fs);
+      $("#caption").textContent = `at ${fmt(ui.t)}: ${f.cols} cols · ${f.rows} rows · colour ${(+f.mix).toFixed(2)} · ⟨${f.chars.length > 24 ? f.chars.slice(0, 24) + "…" : f.chars}⟩ · ${f.width}×${f.height}`;
+    }
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    $("#caption").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    const m = e.message.match(/--(\w+)/);
+    if (m) { $("#lookErr").hidden = false; $("#lookErr").textContent = e.message; const f = $("#f-" + m[1]); if (f) f.classList.add("bad"); }
+  } finally { $("#spin").classList.remove("on"); }
+}
+
+// ---------------------------------------------------------------- summary
+function renderSummary() {
+  const footage = S.outputs.reduce((a, o) => a + (o.duration || 0), 0);
+  const rendered = S.clips.filter(c => c.output).length;
+  const running = S.jobs.filter(j => j.status === "running" || j.status === "queued").length;
+  $("#summary").innerHTML = `<span><b>${S.clips.length}</b> in input</span><span><b>${rendered}</b> rendered</span>` +
+    `<span><b>${fmt(footage)}</b> of footage</span>` + (running ? `<span style="color:var(--info)">${running} job${running > 1 ? "s" : ""} running</span>` : "");
+  $("#cancelAll").hidden = !running;
+}
+
+// ---------------------------------------------------------------- clips list (keyed rows)
+const rows = new Map();
+function latestJob(file, kind = "render") {
+  let best = null;
+  for (const j of S.jobs) if (j.kind === kind && j.file === file && (!best || j.created > best.created)) best = j;
+  return best;
+}
+function rowFor(name) {
+  let r = rows.get(name);
+  if (r) return r;
+  r = document.createElement("div");
+  r.className = "clip"; r.dataset.name = name;
+  r.innerHTML = `<img class="thumb" alt="" loading="lazy"><div><div class="cname"></div><div class="cmeta"></div></div>
+    <div class="cstatus"><span class="badge"></span><div class="bar" hidden><i></i></div><div class="cmsg"></div></div>
+    <div class="cact"><button class="btn sm b-prev">Preview</button><button class="btn sm b-render"></button><button class="btn sm b-play">Play</button></div>`;
+  $(".thumb", r).onclick = $(".b-prev", r).onclick = () => { ui.clip = name; ui.t = 0; save(); renderClipSel(); renderClips(); schedulePreview(0); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  $(".b-render", r).onclick = async () => {
+    const b = $(".b-render", r);
+    if (b.dataset.job) { await api("/api/cancel", { id: b.dataset.job }).catch(e => toast(e.message, "err")); return refresh(); }
+    try {
+      const res = await api("/api/render", { files: [name], style: ui.style, settings: ui.settings, force: b.dataset.force === "1" });
+      if (!res.queued.length && res.skipped.length) toast(`${name}: ${res.skipped[0].why}`, "warn");
+    } catch (e) { toast(e.message, "err"); }
+    refresh();
+  };
+  $(".b-play", r).onclick = () => { const c = S.clips.find(c => c.name === name); if (c?.output_url) openModal(c.output, `<video src="${c.output_url}" controls autoplay playsinline></video>`, { folder: "output", name: c.output }); };
+  rows.set(name, r);
+  return r;
+}
+function renderClips() {
+  const list = $("#list");
+  const names = new Set(S.clips.map(c => c.name));
+  for (const [n, r] of rows) if (!names.has(n)) { r.remove(); rows.delete(n); }
+  $("#drop").classList.toggle("big", !S.clips.length);
+  const want = fullStyle(ui.style);
+  S.clips.forEach(c => {
+    const r = rowFor(c.name);
+    list.append(r);                     // keeps filename order
+    r.classList.toggle("sel", c.name === ui.clip);
+    const th = $(".thumb", r);
+    if (c.kind !== "unknown" && th.dataset.src !== c.thumb) { th.src = c.thumb; th.dataset.src = c.thumb; }
+    $(".cname", r).textContent = c.name;
+    $(".cmeta", r).innerHTML = c.error ? `<span style="color:var(--err)">${esc(c.error)}</span>` :
+      [c.kind === "image" ? "photo" : fmt(c.duration), `${c.width}×${c.height}`, bytes(c.bytes), c.hdr ? `<span class="hdr">HDR</span>` : "",
+       c.kind === "video" && !c.audio ? "no audio" : ""].filter(Boolean).join(" · ");
+    const job = latestJob(c.name), badge = $(".badge", r), bar = $(".bar", r), msg = $(".cmsg", r), btn = $(".b-render", r);
+    let cls = "", text = "", note = "";
+    btn.dataset.job = ""; bar.hidden = true;
+    if (job && job.status === "running") {
+      cls = "run"; text = `rendering ${Math.round(job.progress * 100)}%`; note = job.message; bar.hidden = false; $("i", bar).style.width = (job.progress * 100) + "%";
+      btn.textContent = "Cancel"; btn.dataset.job = job.id;
+    } else if (job && job.status === "queued") {
+      cls = "run"; text = "queued"; btn.textContent = "Cancel"; btn.dataset.job = job.id;
+    } else {
+      if (c.error) { cls = "err"; text = "can't read"; }
+      else if (job && job.status === "error" && (!c.rendered_at || job.finished * 1000 > Date.parse(c.rendered_at))) { cls = "err"; text = "failed"; note = job.message; }
+      else if (c.state === "new") { text = "not rendered"; }
+      else if (c.state === "stale") { cls = "warn"; text = "source changed"; note = "re-render to update"; }
+      else {
+        const same = sameStyle(c.rendered_style, want) && (!c.rendered_settings || (c.rendered_settings.fps == ui.settings.fps && c.rendered_settings.size == ui.settings.size));
+        cls = same ? "ok" : "warn"; text = same ? "rendered" : "rendered · other look";
+        note = (c.rendered_at || "").replace("T", " ").slice(5, 16) + (c.output_duration ? ` · ${fmt(c.output_duration)}` : "");
+        if (!same) note = "Re-render applies the current look";
+      }
+      btn.textContent = c.output ? "Re-render" : "Render";
+      btn.dataset.force = c.output ? "1" : "0";
+      btn.disabled = !!c.error;
+    }
+    badge.className = "badge " + cls; badge.textContent = text; msg.textContent = note; msg.title = note;
+    $(".b-play", r).disabled = !c.output_url;
+  });
+}
+
+// ---------------------------------------------------------------- film
+function renderFilm() {
+  const outs = S.outputs, total = outs.reduce((a, o) => a + (o.duration || 0), 0);
+  const L = parseDur($("#length").value);
+  const valid = isFinite(L) && L > 0;
+  const span = Math.max(total, valid ? L : 0) || 1;
+  const tl = $("#timeline");
+  tl.innerHTML = outs.map(o => `<div class="tseg" style="width:${(100 * (o.duration || 0) / span).toFixed(3)}%" title="${esc(o.name)} · ${fmt(o.duration)}">${esc(o.name.replace(/\.mp4$/, ""))}<small>${fmt(o.duration)}</small></div>`).join("");
+  if (valid && total > L) tl.insertAdjacentHTML("beforeend", `<div class="tcut" style="left:${100 * L / span}%;right:0" title="trimmed off"></div>`);
+  if (valid && total < L) tl.insertAdjacentHTML("beforeend", `<div class="tgap" style="left:${100 * total / span}%;right:0" title="missing footage"></div>`);
+  if (valid) tl.insertAdjacentHTML("beforeend", `<div class="tmark" style="left:calc(${100 * L / span}% - 1px)"></div>`);
+  $("#tlegendEnd").textContent = fmt(span);
+  const note = $("#filmNote");
+  if (!outs.length) { note.className = "film-note"; note.textContent = "Rendered clips land in output/ and are joined in filename order."; }
+  else if (!valid) { note.className = "film-note warn"; note.textContent = "Length looks like 3:00 or 180"; }
+  else if (total < L) { note.className = "film-note warn"; note.textContent = `${fmt(total)} of footage is ${fmt(L - total)} short of ${fmt(L)}. The film will be ${fmt(total)}.`; }
+  else { note.className = "film-note"; note.textContent = `${fmt(total)} of footage → exactly ${fmt(L)}` + (total > L + 0.05 ? `; the last ${fmt(total - L)} is trimmed.` : "."); }
+  $("#order").innerHTML = outs.map((o, i) => `<div><span>${i + 1}</span><span class="n">${esc(o.name)}</span><span>${fmt(o.duration)}</span></div>`).join("");
+  const asm = S.jobs.some(j => j.kind === "assemble" && (j.status === "queued" || j.status === "running"));
+  $("#assembleBtn").disabled = !outs.length || !valid || asm;
+  const fb = $("#finalBox"), f = S.final;
+  const key = f ? f.url : "none";
+  if (fb.dataset.key !== key) {
+    fb.dataset.key = key;
+    fb.innerHTML = f ? `<video src="${f.url}" controls playsinline preload="metadata"></video>
+      <div class="final-meta"><span class="grow">final/${esc(f.name)} · ${fmt(f.duration)} · ${f.width}×${f.height} · ${esc(f.modified)}</span>
+      <button class="btn sm" id="finalReveal">Show in Finder</button></div>`
+      : `<div class="placeholder">The assembled film appears here.<br>Render your clips, set the length, then Assemble.</div>`;
+    const b = $("#finalReveal"); if (b) b.onclick = () => api("/api/open", { folder: "final", name: f.name, reveal: true });
+  }
+}
+
+// ---------------------------------------------------------------- jobs
+function renderJobLines() {
+  const line = (kind, el) => {
+    const j = S.jobs.filter(j => j.kind === kind).sort((a, b) => b.created - a.created)[0];
+    const live = j && (j.status === "running" || j.status === "queued");
+    el.hidden = !live && !(j && j.status === "error" && Date.now() / 1000 - j.finished < 60);
+    if (!j) return;
+    el.style.color = j.status === "error" ? "var(--err)" : "var(--info)";
+    el.textContent = j.status === "error" ? `${j.label}: ${j.message}` : `${j.label} · ${j.status === "queued" ? "queued" : Math.round(j.progress * 100) + "%"} ${j.message || ""}`;
+  };
+  line("contact", $("#contactLine")); line("assemble", $("#assembleLine"));
+  $("#contactBtn").disabled = !S.clips.length || S.jobs.some(j => j.kind === "contact" && (j.status === "queued" || j.status === "running"));
+  $("#renderAll").disabled = !S.clips.length;
+}
+function reactToJobs() {
+  for (const j of S.jobs) {
+    const prev = seenJobs.get(j.id);
+    seenJobs.set(j.id, j.status);
+    if (prev === j.status) continue;
+    if (j.status === "done" && prev !== "done") {
+      if (j.kind === "contact" && j.result) openModal(j.result.name, `<img src="${j.result.url}" alt="contact sheet">`, { folder: "previews", name: j.result.name });
+      if (j.kind === "assemble") { toast(j.result?.warning || `Film assembled: final/film.mp4 (${fmt(j.result?.length)})`, j.result?.warning ? "warn" : ""); $("#finalBox").scrollIntoView({ behavior: "smooth", block: "center" }); }
+      if (j.kind === "render") toast(`${j.file} rendered · ${j.message}`);
+    }
+    if (j.status === "error" && prev !== "error") toast(`${j.label} failed: ${j.message}`, "err");
+  }
+}
+
+// ---------------------------------------------------------------- modal
+let modalReveal = null;
+function openModal(title, html, reveal) {
+  $("#modalTitle").textContent = title; $("#modalBody").innerHTML = html; modalReveal = reveal || null;
+  $("#modalReveal").hidden = !reveal; $("#modal").hidden = false;
+}
+function closeModal() { $("#modal").hidden = true; $("#modalBody").innerHTML = ""; }
+$("#modalClose").onclick = closeModal;
+$("#modal").onclick = e => { if (e.target.id === "modal") closeModal(); };
+$("#modalReveal").onclick = () => modalReveal && api("/api/open", Object.assign({ reveal: true }, modalReveal));
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// ---------------------------------------------------------------- uploads
+function addUploadRow(name, size) {
+  const el = document.createElement("div");
+  el.className = "up";
+  el.innerHTML = `<span>${esc(name)} · ${bytes(size)}</span><div class="bar"><i></i></div><span class="msg">waiting</span>`;
+  $("#uploads").append(el);
+  return {
+    set(p) { $("i", el).style.width = (p * 100) + "%"; $(".msg", el).textContent = Math.round(p * 100) + "%"; },
+    done() { $(".msg", el).textContent = "added"; setTimeout(() => el.remove(), 2500); },
+    fail(m) { $(".msg", el).textContent = m; $(".msg", el).classList.add("err"); setTimeout(() => el.remove(), 15000); },
+  };
+}
+function uploadOne(file) {
+  return new Promise(res => {
+    const row = addUploadRow(file.name, file.size);
+    const x = new XMLHttpRequest();
+    x.open("POST", "/api/upload?name=" + encodeURIComponent(file.name));
+    x.upload.onprogress = e => e.lengthComputable && row.set(e.loaded / e.total);
+    x.onload = () => {
+      let j = {}; try { j = JSON.parse(x.responseText); } catch (e) {}
+      x.status === 200 ? row.done() : row.fail(j.error || x.statusText);
+      if (x.status !== 200) toast(j.error || x.statusText, "warn");
+      res(); refresh();
+    };
+    x.onerror = () => { row.fail("upload failed"); res(); };
+    x.send(file);
+  });
+}
+async function uploadFiles(files) {
+  files = [...files].filter(f => f.size > 0);
+  if (!files.length) return;
+  uploading += files.length; refresh();
+  for (const f of files) { await uploadOne(f); uploading--; }
+}
+$("#choose").onclick = () => $("#fileIn").click();
+$("#fileIn").onchange = e => { uploadFiles(e.target.files); e.target.value = ""; };
+let dragDepth = 0;
+window.addEventListener("dragenter", e => { if ([...(e.dataTransfer?.types || [])].includes("Files")) { dragDepth++; document.body.classList.add("dragging"); } });
+window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove("dragging"); });
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging"); if (e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files); });
+
+// ---------------------------------------------------------------- wiring
+["cols", "color", "tint", "bg", "contrast"].forEach(k => {
+  $("#f-" + k).addEventListener("input", () => { if (k === "tint" || k === "bg") syncColor(k); if (k === "contrast") syncContrast(); lookChanged(); });
+});
+["tint", "bg"].forEach(k => $("#c-" + k).addEventListener("input", e => { $("#f-" + k).value = e.target.value; lookChanged(); }));
+$("#r-contrast").addEventListener("input", e => { $("#f-contrast").value = (+e.target.value).toFixed(2).replace(/0$/, ""); syncContrast(); lookChanged(); });
+$("#f-charsetSel").onchange = () => { const c = $("#f-charsetSel").value === "__custom"; $("#f-charsetCustom").hidden = !c; if (c && !$("#f-charsetCustom").value) $("#f-charsetCustom").value = " .:-=+*#%@"; charsPreview(); lookChanged(); };
+$("#f-charsetCustom").addEventListener("input", () => { charsPreview(); lookChanged(); });
+$("#f-invert").onchange = e => { e.target.indeterminate = false; lookChanged(); };
+$$(".chip[data-set]").forEach(b => b.onclick = () => { const f = $("#f-" + b.dataset.set); f.value = b.dataset.v; f.dispatchEvent(new Event("input")); });
+$("#presetSel").onchange = e => { ui.preset = e.target.value; ui.style = ui.preset ? presetStyle(ui.preset) : fullStyle({}); writeLook(ui.style); lookChanged(); };
+$("#resetBtn").onclick = () => { ui.style = ui.preset ? presetStyle(ui.preset) : fullStyle({}); writeLook(ui.style); lookChanged(); };
+["s-fps", "s-size", "s-photo"].forEach(id => $("#" + id).addEventListener("change", settingsChanged));
+
+$("#savePresetBtn").onclick = () => { $("#saveBox").hidden = false; $("#presetName").value = ui.preset && !$("#modified").hidden ? ui.preset + "-2" : ""; $("#presetName").focus(); $("#presetName").select(); };
+$("#presetCancel").onclick = () => { $("#saveBox").hidden = true; };
+$("#presetSave").onclick = async () => {
+  const name = $("#presetName").value.trim(), description = $("#presetDescIn").value.trim();
+  try {
+    let r = await api("/api/preset", { name, description, style: ui.style });
+    if (r.exists) {
+      if (!confirm(`A preset called "${name}" already exists in presets.json. Replace it?`)) return;
+      r = await api("/api/preset", { name, description, style: ui.style, overwrite: true });
+    }
+    ui.preset = name; save(); $("#saveBox").hidden = true; toast(`Saved preset "${name}" to presets.json`);
+    await refresh();
+  } catch (e) { toast(e.message, "err"); }
+};
+
+$("#clipSel").onchange = e => { ui.clip = e.target.value; ui.t = 0; save(); renderClipSel(); renderClips(); schedulePreview(0); };
+$("#scrub").addEventListener("input", e => { ui.t = +e.target.value; $("#tlabel").textContent = `${fmt(ui.t)} / ${fmt(clipDur(currentClip()))}`; save(); schedulePreview(90); });
+$$("#modeSeg button").forEach(b => b.onclick = () => { ui.mode = b.dataset.mode; $$("#modeSeg button").forEach(x => x.classList.toggle("on", x === b)); save(); schedulePreview(0); });
+$$("#modeSeg button").forEach(x => x.classList.toggle("on", x.dataset.mode === ui.mode));
+
+$("#forceAll").onchange = e => { ui.force = e.target.checked; save(); };
+$("#renderAll").onclick = async () => {
+  try {
+    const r = await api("/api/render", { files: [], style: ui.style, settings: ui.settings, force: ui.force });
+    const skipped = r.skipped.length ? `, skipped ${r.skipped.length} already rendered` : "";
+    toast(r.queued.length ? `Queued ${r.queued.length} clip${r.queued.length > 1 ? "s" : ""}${skipped}` : `Nothing new to render${skipped}. Tick "include already rendered" to redo them.`, r.queued.length ? "" : "warn");
+  } catch (e) { toast(e.message, "err"); }
+  refresh();
+};
+$("#every").addEventListener("change", e => { ui.every = Math.max(1, +e.target.value || 10); e.target.value = ui.every; save(); });
+$("#contactBtn").onclick = async () => {
+  try { await api("/api/contact", { every: ui.every, style: ui.style, settings: ui.settings, preset: $("#modified").hidden ? ui.preset : "" }); }
+  catch (e) { toast(e.message, "err"); }
+  refresh();
+};
+$("#cancelAll").onclick = async () => { await api("/api/cancel", {}); refresh(); };
+$("#length").addEventListener("input", e => { ui.length = e.target.value; save(); if (S) renderFilm(); });
+$("#fade").addEventListener("input", e => { ui.fade = e.target.value; save(); });
+$("#assembleBtn").onclick = async () => {
+  try { await api("/api/assemble", { length: ui.length, fade: ui.fade }); } catch (e) { toast(e.message, "err"); }
+  refresh();
+};
+$$("[data-open]").forEach(b => b.onclick = () => api("/api/open", { folder: b.dataset.open }).catch(e => toast(e.message, "err")));
+$("#root").onclick = () => api("/api/open", { folder: "root" });
+
+refresh().then(() => schedulePreview(0));
+</script>
+</body>
+</html>

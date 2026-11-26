@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ./film - sound makes image. ./film --help, or see SOUNDFILM.md.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+PY="$HERE/.venv/bin/python"
+
+if [[ "${1:-}" == "setup" || ! -x "$PY" ]] || ! "$PY" -c "import librosa, yaml, matplotlib, cv2" 2>/dev/null; then
+  [[ -x "$PY" ]] || "$HERE/setup.sh"                       # creates .venv with opencv/numpy/pillow
+  echo "installing librosa, PyYAML, matplotlib into $HERE/.venv ..."
+  "$PY" -m pip install --quiet -r "$HERE/requirements.txt" -r "$HERE/requirements-film.txt"
+  [[ "${1:-}" == "setup" ]] && { echo "ok"; exit 0; }
+fi
+PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m soundfilm "$@"

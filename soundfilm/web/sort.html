@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Sorter</title>
+<style>
+:root {
+  --bg: #0c0e0c; --panel: #131613; --panel-2: #191d19; --line: #232823; --line-2: #2f362f;
+  --text: #e7e9e4; --muted: #8f968d; --faint: #5f665e;
+  --accent: #a8d47f; --accent-ink: #0d160a; --accent-soft: rgba(168, 212, 127, .12);
+  --warn: #e7b65c; --err: #ef7a6a; --info: #86b9e6;
+  --bright: #ffd23c; --texture: #6ed778; --dark: #5a96ff; --inbox: #c9cdc6; --rejected: #ef7a6a;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --tw: 190px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
+button, input, select { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+a { color: inherit; }
+
+.top { display: flex; align-items: center; gap: 18px; padding: 12px 20px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 6; background: rgba(12, 14, 12, .94); backdrop-filter: blur(8px); flex-wrap: wrap; }
+.brand { font: 600 15px var(--mono); white-space: nowrap; }
+.brand .glyph { color: var(--accent); margin-right: 6px; }
+.brand .sub { color: var(--faint); font-weight: 400; }
+.back { font: 12.5px var(--mono); color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--text); }
+.grow { flex: 1; }
+.job { font: 12px var(--mono); color: var(--info); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+
+.bar { display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  position: sticky; top: 53px; z-index: 5; background: rgba(12, 14, 12, .94); backdrop-filter: blur(8px); }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 11px; font: 12.5px var(--mono);
+  color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tab .d { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.tab b { font-weight: 500; color: var(--text); }
+.tab.on { background: var(--panel-2); color: var(--text); border-color: #4a544a; }
+.btn { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 11px; font-size: 12.5px;
+  font-weight: 500; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { border-color: #4a544a; background: #1e231e; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.in { background: #0f120f; border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 8px; font: 12.5px var(--mono); }
+.ctl { display: inline-flex; align-items: center; gap: 6px; font: 12px var(--mono); color: var(--muted); }
+.ctl input[type=range] { accent-color: var(--accent); width: 110px; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; }
+.seg button { background: transparent; border: 0; padding: 5px 10px; font: 12px var(--mono); color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--panel-2); color: var(--text); }
+
+main { padding: 14px 20px 110px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tw), 1fr)); gap: 10px; }
+.card { position: relative; border-radius: 8px; overflow: hidden; background: #000; border: 2px solid transparent; cursor: pointer;
+  user-select: none; outline: none; }
+.card .im { aspect-ratio: 16 / 9; background: #070807; display: block; width: 100%; object-fit: cover; }
+.whole .card .im { object-fit: contain; }
+.card .meta { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: var(--panel); font: 11.5px var(--mono); }
+.card .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); }
+.card .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.card .sg { color: var(--faint); white-space: nowrap; }
+.card .sg i { font-style: normal; color: var(--c); }
+.card.sel { border-color: var(--accent); }
+.card.sel::after { content: "✓"; position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
+  color: var(--accent-ink); font: 700 12px/20px var(--sans); text-align: center; }
+.card.focus { box-shadow: 0 0 0 2px rgba(255, 255, 255, .55); }
+.card .where { position: absolute; top: 6px; left: 6px; font: 10.5px/1 var(--mono); padding: 4px 6px; border-radius: 5px;
+  background: rgba(0, 0, 0, .72); color: var(--c); }
+.ustrip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 10px 20px 0; }
+.ucard { border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 11px; background: var(--panel); cursor: pointer; min-width: 0; }
+.ucard:hover { border-color: #4a544a; }
+.ucard .uh { display: flex; align-items: center; gap: 7px; font: 12.5px var(--mono); }
+.ucard .uh .d { width: 9px; height: 9px; border-radius: 50%; background: var(--c); flex: none; }
+.ucard .uh b { font-weight: 500; }
+.ucard .uh .x { margin-left: auto; font-weight: 600; color: var(--lvl); }
+.ucard .ul { font: 11.5px var(--mono); color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ucard .ul.need { color: var(--faint); }
+.ubar { height: 4px; border-radius: 2px; background: #1f241f; margin-top: 6px; overflow: hidden; }
+.ubar i { display: block; height: 100%; background: var(--lvl); }
+.card .uses { position: absolute; left: 6px; bottom: 32px; font: 600 11px/1 var(--mono); padding: 4px 6px; border-radius: 5px;
+  background: rgba(0, 0, 0, .75); color: var(--lvl); }
+.card .uses.none { color: var(--faint); font-weight: 400; }
+@media (max-width: 700px) { .ustrip { grid-template-columns: minmax(0, 1fr); padding: 10px 16px 0; } }
+.empty { color: var(--faint); font: 13px/1.8 var(--mono); text-align: center; padding: 60px 20px; }
+
+.act { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 20px; background: rgba(19, 22, 19, .97); border-top: 1px solid var(--line-2); }
+.act .n { font: 12.5px var(--mono); color: var(--muted); min-width: 110px; }
+.act .btn kbd, .zbar .btn kbd { font: 10.5px var(--mono); color: var(--faint); margin-left: 6px; }
+.act .btn .d, .zbar .btn .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 6px; }
+.act .hint { font: 11.5px var(--mono); color: var(--faint); margin-left: auto; }
+
+.zoom { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .92); display: flex; flex-direction: column; }
+.zimg { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px; position: relative; }
+.zwrap { position: relative; max-width: 100%; max-height: 100%; }
+.zwrap img { display: block; max-width: calc(100vw - 28px); max-height: calc(100vh - 150px); }
+.zwrap { overflow: hidden; }
+.zwrap .frame { position: absolute; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .58); pointer-events: none; }
+.zwrap .frame.hand { outline: 1.5px solid var(--accent); }
+.cropping .zwrap .frame { pointer-events: auto; cursor: move; outline: 2px solid var(--accent); touch-action: none; }
+.frame .hd { position: absolute; width: 16px; height: 16px; background: var(--accent); border: 2px solid #0c0e0c; border-radius: 3px; display: none; }
+.cropping .frame .hd { display: block; }
+.frame .hd.nw { left: -8px; top: -8px; cursor: nwse-resize; } .frame .hd.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+.frame .hd.ne { right: -8px; top: -8px; cursor: nesw-resize; } .frame .hd.sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.frame .thirds { position: absolute; inset: 0; display: none; pointer-events: none;
+  background: linear-gradient(90deg, transparent 33.2%, rgba(255,255,255,.25) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.25) 66.6%, transparent 66.8%),
+              linear-gradient(0deg, transparent 33.2%, rgba(255,255,255,.25) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.25) 66.6%, transparent 66.8%); }
+.cropping .frame .thirds { display: block; }
+.cbar { display: none; }
+.tilt { display: inline-flex; align-items: center; gap: 6px; font: 12px var(--mono); color: var(--muted); }
+.tilt input[type=range] { accent-color: var(--accent); width: 150px; }
+.tilt b { color: var(--text); font-weight: 500; min-width: 54px; display: inline-block; text-align: right; }
+.cropping .cbar { display: flex; }
+.cropping .zbar.normal { display: none; }
+.card .cut { position: absolute; top: 6px; right: 6px; font: 11px/1 var(--mono); padding: 4px 5px; border-radius: 5px; background: rgba(0, 0, 0, .72); color: var(--accent); }
+.card.sel .cut { right: 32px; }
+.zbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line-2); }
+.zbar .info { font: 12.5px var(--mono); color: var(--muted); flex: 1; min-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zbar .info b { color: var(--text); font-weight: 500; }
+.toasts { position: fixed; right: 18px; bottom: 70px; display: grid; gap: 8px; z-index: 30; max-width: min(460px, 92vw); }
+.toast { background: #1b201b; border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+.toast.err { border-left-color: var(--err); }
+@media (max-width: 700px) {
+  .top, .bar, main, .act { padding-left: 16px; padding-right: 16px; }
+  .bar { position: static; }
+  .act .hint { display: none; }
+  :root { --tw: 150px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="glyph">░▒▓</span>soundfilm <span class="sub">photo sorter</span></div>
+  <a class="back" href="/">← dashboard</a>
+  <div class="grow"></div>
+  <span class="job" id="job"></span>
+</header>
+
+<div class="bar">
+  <div class="tabs" id="tabs"></div>
+  <div class="grow"></div>
+  <button class="btn" id="impSel" title="Select photos in the Photos app first">Import Photos selection</button>
+  <select class="in" id="impAlbum" title="Import a whole album from the Photos app"><option value="">Import album…</option></select>
+  <button class="btn" id="impFiles">Add files…</button>
+  <span class="seg" id="view"><button data-v="film" class="on" title="What the film shows: the centre 16:9">film crop</button><button data-v="whole">whole</button></span>
+  <select class="in" id="order" title="Order of the photos"><option value="name">by name</option><option value="most">most used first</option><option value="least">least used first</option></select>
+  <label class="ctl">size <input type="range" id="size" min="110" max="380" value="190"></label>
+</div>
+
+<div class="ustrip" id="ustrip" title="How the next render uses each pool, with your saved settings"></div>
+<main id="main"><div class="grid" id="grid"></div><div class="empty" id="empty" hidden></div></main>
+
+<div class="act" id="act">
+  <span class="n" id="nsel">nothing selected</span>
+  <button class="btn" data-to="bright" style="--c:var(--bright)"><span class="d"></span>Bright<kbd>1</kbd></button>
+  <button class="btn" data-to="texture" style="--c:var(--texture)"><span class="d"></span>Texture<kbd>2</kbd></button>
+  <button class="btn" data-to="dark" style="--c:var(--dark)"><span class="d"></span>Dark<kbd>3</kbd></button>
+  <button class="btn" data-to="suggest">Use suggestion<kbd>S</kbd></button>
+  <button class="btn" data-to="rejected" style="--c:var(--rejected)"><span class="d"></span>Reject<kbd>X</kbd></button>
+  <button class="btn" data-to="inbox" style="--c:var(--inbox)"><span class="d"></span>Back to inbox<kbd>0</kbd></button>
+  <span class="hint">click · ⇧-click range · ⌘-click add · ⌘A all · space: look closer · C: crop / rotate · ←→↑↓ move</span>
+</div>
+
+<div class="zoom" id="zoom" hidden>
+  <div class="zimg" id="zimg"><div class="zwrap" id="zwrap"><img id="zpic" alt=""></div></div>
+  <div class="zbar normal">
+    <span class="info" id="zinfo"></span>
+    <button class="btn" id="zcrop" title="Turn the photo and choose the part the film shows">✂ Crop / rotate…<kbd>C</kbd></button>
+    <button class="btn" data-to="bright" style="--c:var(--bright)"><span class="d"></span>Bright<kbd>1</kbd></button>
+    <button class="btn" data-to="texture" style="--c:var(--texture)"><span class="d"></span>Texture<kbd>2</kbd></button>
+    <button class="btn" data-to="dark" style="--c:var(--dark)"><span class="d"></span>Dark<kbd>3</kbd></button>
+    <button class="btn" data-to="suggest">Suggestion<kbd>S</kbd></button>
+    <button class="btn" data-to="rejected" style="--c:var(--rejected)"><span class="d"></span>Reject<kbd>X</kbd></button>
+    <button class="btn" data-to="inbox" style="--c:var(--inbox)"><span class="d"></span>Inbox<kbd>0</kbd></button>
+    <button class="btn" id="zprev">←</button><button class="btn" id="znext">→</button>
+    <button class="btn" id="zclose">Close<kbd>esc</kbd></button>
+  </div>
+  <div class="zbar cbar">
+    <span class="info">Drag to move · corners resize · scroll zooms · arrows nudge · + / − size</span>
+    <button class="btn" id="crotl" title="Turn 90° to the left">⟲ 90°<kbd>[</kbd></button>
+    <button class="btn" id="crotr" title="Turn 90° to the right">⟳ 90°<kbd>]</kbd></button>
+    <label class="tilt" title="Tilt (, and . for half a degree, ⇧ for 5°)">tilt <input type="range" id="ctilt" min="-45" max="45" step="0.5" value="0"> <b id="cangle">0°</b></label>
+    <button class="btn primary" id="csave">Save<kbd>↵</kbd></button>
+    <button class="btn" id="ccentre" title="No rotation, centre of the photo (the default)">Reset<kbd>R</kbd></button>
+    <button class="btn" id="ccancel">Cancel<kbd>esc</kbd></button>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+// Every photo is in one folder: inbox, bright, texture, dark or rejected. Choosing a pool moves the file there
+// (nothing is deleted or overwritten). The film only uses bright, texture and dark.
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const COLOR = {inbox: 'var(--inbox)', bright: 'var(--bright)', texture: 'var(--texture)', dark: 'var(--dark)', rejected: 'var(--rejected)'};
+const TABS = ['inbox', 'bright', 'texture', 'dark', 'rejected', 'all'];
+const KEYS = {'1': 'bright', '2': 'texture', '3': 'dark', 'x': 'rejected', '0': 'inbox', 's': 'suggest'};
+const store = {get: k => { try { return localStorage.getItem('sorter.' + k); } catch { return null; } },
+               set: (k, v) => { try { localStorage.setItem('sorter.' + k, v); } catch {} }};
+let L = null, tab = store.get('tab') || 'inbox', view = store.get('view') || 'film';
+let sel = new Set(), focus = 0, anchor = null, zoomAt = null, sig = '';
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json().catch(() => ({error: r.statusText}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg, kind = '') {
+  const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg;
+  $('#toasts').append(t); setTimeout(() => t.remove(), kind === 'err' ? 9000 : 3500);
+}
+let U = null, order = store.get('order') || 'name';                 // U: how the next render uses the photos
+const usesOf = p => (U && U.photos && U.photos[p.ref]) ? U.photos[p.ref].cuts : 0;
+const inPool = p => ['bright', 'texture', 'dark'].includes(p.where);
+const visible = () => {
+  if (!L) return [];
+  const v = L.photos.filter(p => tab === 'all' || p.where === tab);
+  if (order !== 'name' && U) v.sort((a, b) => (order === 'most' ? -1 : 1) * (usesOf(a) - usesOf(b)) || a.name.localeCompare(b.name));
+  return v;
+};
+// green: each photo comes back only a few times; amber: often; red: a lot (add photos to that pool)
+const level = x => x <= 4 ? 'var(--accent)' : x <= 8 ? 'var(--warn)' : 'var(--err)';
+async function loadUsage() {
+  try { U = await api('/api/usage'); } catch { U = null; }
+  drawUsage(); sig = ''; if (L) draw();
+}
+let usageTimer = null;
+const usageSoon = (ms = 700) => { clearTimeout(usageTimer); usageTimer = setTimeout(loadUsage, ms); };
+function drawUsage() {
+  const el = $('#ustrip');
+  if (!U || U.error) { el.innerHTML = U && U.error ? `<div class="ul need" style="grid-column:1/-1">${esc(U.error)}</div>` : ''; return; }
+  el.innerHTML = ['bright', 'texture', 'dark'].map(k => {
+    const d = U.pools[k], x = d.per_photo || 0, need5 = Math.ceil(d.cuts / 5);
+    return `<div class="ucard" data-pool="${k}" style="--c:${COLOR[k]};--lvl:${level(x)}">
+      <div class="uh"><span class="d"></span><b>${k}</b> <span style="color:var(--muted)">${d.photos} photos · ${d.cuts} cuts</span>
+        <span class="x" title="cuts per photo on average">${d.photos ? x.toFixed(1) + '× each' : '—'}</span></div>
+      <div class="ubar"><i style="width:${Math.min(100, x / 12 * 100)}%"></i></div>
+      <div class="ul">most ${d.most}×${d.most_name ? ` (${esc(d.most_name.split('/').pop())})` : ''}${d.unused ? ` · ${d.unused} unused` : ''}${d.closest_repeat_s !== null ? ` · back after ${d.closest_repeat_s}s at the closest` : ''}</div>
+      <div class="ul need">${d.cuts && d.photos < need5 ? `for about 5× each: ~${need5} photos (${need5 - d.photos} more)` : d.cuts ? 'plenty of photos for its cuts' : 'no cuts use this pool'}</div>
+    </div>`;
+  }).join('');
+}
+$('#ustrip').onclick = e => { const c = e.target.closest('[data-pool]'); if (!c) return;
+  tab = c.dataset.pool; store.set('tab', tab); order = 'most'; store.set('order', order); $('#order').value = order; sel.clear(); focus = 0; sig = ''; draw(); scrollTo(0, 0); };
+$('#order').value = order;
+$('#order').onchange = e => { order = e.target.value; store.set('order', order); sig = ''; draw(); };
+const cropSig = p => p.crop ? `${p.crop.x},${p.crop.y},${p.crop.w},${p.crop.rot || 0}` : '';
+const savedRot = p => (p && p.crop && p.crop.rot) || 0;
+const zoomURL = (p, rot) => `/thumb/${p.where}/${encodeURIComponent(p.name)}?h=1200&v=${Math.round(p.mtime)}${rot ? '&rot=' + rot : ''}`;
+const thumbURL = (p, h) => `/thumb/${p.where}/${encodeURIComponent(p.name)}?h=${h}${view === 'film' && h < 600 ? '&crop=film' : ''}&v=${Math.round(p.mtime)}${h < 600 && p.crop ? '&k=' + encodeURIComponent(cropSig(p)) : ''}`;
+
+async function load() {
+  try { L = await api('/api/photos'); } catch (e) { toast(e.message, 'err'); return; }
+  const refs = new Set(L.photos.map(p => p.ref));
+  for (const r of [...sel]) if (!refs.has(r)) sel.delete(r);
+  draw();
+}
+function draw() {
+  const c = L.counts, all = Object.values(c).reduce((a, b) => a + b, 0);
+  $('#tabs').innerHTML = TABS.map(t => `<button class="tab ${t === tab ? 'on' : ''}" data-tab="${t}" style="--c:${COLOR[t] || 'var(--muted)'}">
+    ${t === 'all' ? '' : '<span class="d"></span>'}${t} <b>${t === 'all' ? all : c[t]}</b></button>`).join('');
+  const v = visible();
+  focus = Math.max(0, Math.min(focus, v.length - 1));
+  const newSig = tab + view + order + v.map(p => p.ref + (p.suggest || '') + cropSig(p) + ':' + usesOf(p)).join('|');
+  if (newSig !== sig) {
+    sig = newSig;
+    $('#grid').innerHTML = v.map((p, i) => `<div class="card" data-i="${i}" data-ref="${esc(p.ref)}" style="--c:${COLOR[p.where]}">
+      <img class="im" loading="lazy" src="${thumbURL(p, 240)}" alt="">
+      ${tab === 'all' ? `<span class="where" style="--c:${COLOR[p.where]}">${p.where}</span>` : ''}
+      ${p.crop ? `<span class="cut" title="framed by hand">${p.crop.rot ? '↻' : ''}${'w' in p.crop ? '✂' : ''}</span>` : ''}
+      ${U && !U.error && inPool(p) ? (usesOf(p) ? `<span class="uses" style="--lvl:${level(usesOf(p))}" title="cuts to this photo in the film">×${usesOf(p)}</span>` : '<span class="uses none" title="not in the film with these settings">unused</span>') : ''}
+      <div class="meta"><span class="dot"></span><span class="nm" title="${esc(p.name)}">${esc(p.name)}</span>
+        ${p.suggest ? `<span class="sg" title="the automatic suggestion">→ <i style="--c:${COLOR[p.suggest]}">${p.suggest}</i></span>` : ''}</div></div>`).join('');
+  }
+  document.querySelectorAll('#grid .card').forEach((el, i) => {
+    el.classList.toggle('sel', sel.has(el.dataset.ref)); el.classList.toggle('focus', i === focus);
+  });
+  const e = $('#empty');
+  e.hidden = v.length > 0;
+  if (!v.length) e.innerHTML = tab === 'inbox'
+    ? `The inbox is empty.<br>Select photos in the Photos app and click <b>Import Photos selection</b>,<br>pick an album under <b>Import album…</b>, or <b>Add files…</b> from Finder.`
+    : `No photos in ${tab}.`;
+  const n = sel.size;
+  $('#nsel').textContent = n ? `${n} selected` : (v.length ? 'nothing selected (keys act on the outlined one)' : 'nothing selected');
+  if (!watching) $('#job').textContent = L.unscored ? `working out suggestions for ${L.unscored} photos…` : '';
+  document.body.classList.toggle('whole', view === 'whole');
+  if (zoomAt !== null) drawZoom();
+}
+
+// ---------------------------------------------------------------- selecting
+$('#tabs').onclick = e => { const t = e.target.closest('[data-tab]'); if (!t) return; tab = t.dataset.tab; store.set('tab', tab); sel.clear(); focus = 0; anchor = null; sig = ''; draw(); scrollTo(0, 0); };
+$('#grid').addEventListener('click', e => {
+  const c = e.target.closest('.card'); if (!c) return;
+  const i = +c.dataset.i, v = visible(), ref = v[i].ref;
+  if (e.shiftKey && anchor !== null) { const [a, b] = [Math.min(anchor, i), Math.max(anchor, i)]; for (let k = a; k <= b; k++) sel.add(v[k].ref); }
+  else if (e.metaKey || e.ctrlKey) { sel.has(ref) ? sel.delete(ref) : sel.add(ref); anchor = i; }
+  else { sel = new Set([ref]); anchor = i; }
+  focus = i; draw();
+});
+$('#grid').addEventListener('dblclick', e => { const c = e.target.closest('.card'); if (c) openZoom(+c.dataset.i); });
+function cols() {
+  const cards = document.querySelectorAll('#grid .card'); if (cards.length < 2) return 1;
+  const top = cards[0].offsetTop; let n = 0; for (const c of cards) { if (c.offsetTop !== top) break; n++; } return n;
+}
+function moveFocus(d, extend) {
+  const v = visible(); if (!v.length) return;
+  focus = Math.max(0, Math.min(v.length - 1, focus + d));
+  if (extend) { sel.add(v[focus].ref); }
+  draw();
+  document.querySelector(`#grid .card[data-i="${focus}"]`)?.scrollIntoView({block: 'nearest'});
+}
+
+// ---------------------------------------------------------------- moving
+async function assign(to, refs) {
+  if (!refs.length) return;
+  const v = visible();
+  const groups = {};                                    // "suggest" sends each photo to its own suggestion
+  for (const ref of refs) {
+    const p = L.photos.find(x => x.ref === ref); if (!p) continue;
+    const dest = to === 'suggest' ? p.suggest : to;
+    if (!dest) { toast(`${p.name}: no suggestion yet`, 'err'); continue; }
+    if (dest !== p.where) (groups[dest] = groups[dest] || []).push(ref);
+  }
+  let moved = 0;
+  for (const [dest, rs] of Object.entries(groups)) {
+    try {
+      const r = await api('/api/move', {refs: rs, to: dest});
+      for (const [from, toRef] of r.moved) {
+        const p = L.photos.find(x => x.ref === from);
+        if (p) { p.ref = toRef; p.where = dest; p.name = toRef.split('/').slice(1).join('/'); }
+        moved++;
+      }
+      for (const e of r.errors) toast(e, 'err');
+    } catch (e) { toast(e.message, 'err'); }
+  }
+  for (const w of Object.keys(L.counts)) L.counts[w] = L.photos.filter(p => p.where === w).length;
+  sel.clear();
+  if (moved) usageSoon();
+  if (moved && tab !== 'all') {                          // they leave this tab: keep the place in the list
+    const left = visible().length; focus = Math.min(focus, Math.max(0, left - 1));
+  }
+  draw();
+  if (zoomAt !== null) {
+    const nv = visible();
+    if (!nv.length) closeZoom();
+    else { zoomAt = tab === 'all' ? Math.min(zoomAt + 1, nv.length - 1) : Math.min(zoomAt, nv.length - 1); drawZoom(); }
+  }
+}
+const targets = () => { const v = visible(); return sel.size ? [...sel] : (v[focus] ? [v[focus].ref] : []); };
+$('#act').addEventListener('click', e => { const b = e.target.closest('[data-to]'); if (b) assign(b.dataset.to, targets()); });
+
+// ---------------------------------------------------------------- looking closer (one photo at a time)
+function openZoom(i) { zoomAt = i; $('#zoom').hidden = false; drawZoom(); }
+function closeZoom() { editing = null; $('#zoom').classList.remove('cropping'); zoomAt = null; $('#zoom').hidden = true; draw(); document.querySelector(`#grid .card[data-i="${focus}"]`)?.scrollIntoView({block: 'nearest'}); }
+function drawZoom() {
+  const v = visible(), p = v[zoomAt]; if (!p) return closeZoom();
+  focus = zoomAt;
+  const img = $('#zpic'), src = zoomURL(p, editing ? editRot : savedRot(p));
+  if (img.dataset.src !== src) { img.dataset.src = src; img.src = src; img.onload = () => { onRotLoaded(); drawFrame(); }; }
+  $('#zinfo').innerHTML = `<b>${esc(p.name)}</b> · in <span style="color:${COLOR[p.where]}">${p.where}</span>` +
+    (p.suggest ? ` · suggestion <span style="color:${COLOR[p.suggest]}">${p.suggest}</span>` : '') +
+    (p.crop ? ` · <span style="color:var(--accent)">${p.crop.rot ? `↻ ${p.crop.rot}° ` : ''}${'w' in p.crop ? '✂ your crop' : ''}</span>` : '') +
+    (U && U.photos && inPool(p) ? (U.photos[p.ref] ? ` · in the film <span style="color:${level(U.photos[p.ref].cuts)}">${U.photos[p.ref].cuts}×</span>, first at ${U.photos[p.ref].first_s}s, ${U.photos[p.ref].seconds}s on screen` : ' · not in the film') : '') +
+    ` · ${zoomAt + 1}/${v.length}`;
+  drawFrame();
+}
+// The film shows a 16:9 part of each photo: your hand crop if you made one, otherwise the centre.
+// Rects are fractions of the upright photo: {x, y, w, h}.
+let editing = null;                                    // the rect being edited in crop mode
+let editRot = 0, rotPending = null;                    // its rotation (degrees clockwise); what to do once the turned photo loads
+function centreRect(w, h) {
+  if (w / h > 16 / 9) { const cw = h * 16 / 9 / w; return {x: (1 - cw) / 2, y: 0, w: cw, h: 1}; }
+  const ch = w * 9 / 16 / h; return {x: 0, y: (1 - ch) / 2, w: 1, h: ch};
+}
+function drawFrame() {
+  const img = $('#zpic'), W = img.naturalWidth, H = img.naturalHeight, p = visible()[zoomAt];
+  let f = $('#zwrap .frame');
+  if (!W || !H || !p) { if (f) f.hidden = true; return; }
+  if (!f) {
+    $('#zwrap').insertAdjacentHTML('beforeend', '<div class="frame"><div class="thirds"></div><i class="hd nw" data-c="nw"></i><i class="hd ne" data-c="ne"></i><i class="hd sw" data-c="sw"></i><i class="hd se" data-c="se"></i></div>');
+    f = $('#zwrap .frame'); bindCrop(f);
+  }
+  const r = editing || (p.crop && 'w' in p.crop ? p.crop : centreRect(W, H));
+  f.hidden = false;
+  f.classList.toggle('hand', !!p.crop && !editing);
+  Object.assign(f.style, {left: r.x * 100 + '%', top: r.y * 100 + '%', width: r.w * 100 + '%', height: r.h * 100 + '%'});
+}
+function startCrop() {
+  const img = $('#zpic'), p = visible()[zoomAt];
+  if (!p || !img.naturalWidth) return;
+  editRot = savedRot(p);
+  editing = p.crop && 'w' in p.crop ? {x: p.crop.x, y: p.crop.y, w: p.crop.w, h: p.crop.h} : centreRect(img.naturalWidth, img.naturalHeight);
+  $('#zoom').classList.add('cropping'); showAngle(); drawFrame();
+}
+function endCrop() {
+  const p = visible()[zoomAt], back = editRot !== savedRot(p);
+  editing = null; $('#zoom').classList.remove('cropping');
+  if (back) drawZoom(); else drawFrame();               // cancelled a rotation: show the saved one again
+}
+const norm = d => { d = ((d + 180) % 360 + 360) % 360 - 180; return d === -180 ? 180 : Math.round(d * 100) / 100; };
+function showAngle() {
+  const q = Math.round(editRot / 90), fine = editRot - q * 90;
+  $('#ctilt').value = fine; $('#cangle').textContent = `${editRot > 0 ? '+' : ''}${editRot}°`;
+}
+let rotTimer = null;
+function setRot(deg, quarterTurn) {                    // turn the photo; a quarter turn re-centres the frame
+  editRot = norm(deg); showAngle();
+  rotPending = quarterTurn ? 'centre' : (rotPending || 'keep');
+  clearTimeout(rotTimer);
+  rotTimer = setTimeout(() => { const p = visible()[zoomAt]; if (p) { const img = $('#zpic'); img.dataset.src = ''; drawZoom(); } }, quarterTurn ? 0 : 120);
+}
+function onRotLoaded() {
+  if (!editing || !rotPending) return;
+  const img = $('#zpic');
+  editing = rotPending === 'centre' ? centreRect(img.naturalWidth, img.naturalHeight) : fitRect(editing);
+  rotPending = null;
+}
+$('#crotl').onclick = () => setRot(editRot - 90, true);
+$('#crotr').onclick = () => setRot(editRot + 90, true);
+$('#ctilt').oninput = e => setRot(Math.round(editRot / 90) * 90 + parseFloat(e.target.value), false);
+function fitRect(r) {                                   // keep 16:9 (in pixels) and inside the photo
+  const img = $('#zpic'), W = img.naturalWidth, H = img.naturalHeight;
+  const max = centreRect(W, H);
+  let w = Math.min(Math.max(r.w, max.w * 0.08), max.w);
+  let h = w * W / H * 9 / 16;
+  return {w, h, x: Math.min(Math.max(r.x, 0), 1 - w), y: Math.min(Math.max(r.y, 0), 1 - h)};
+}
+function scaleRect(r, k) {                              // grow/shrink around the centre
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, n = fitRect({...r, w: r.w * k});
+  return fitRect({...n, x: cx - n.w / 2, y: cy - n.h / 2});
+}
+function bindCrop(f) {
+  let drag = null;
+  f.addEventListener('pointerdown', e => {
+    if (!editing) return;
+    e.preventDefault(); e.stopPropagation(); try { f.setPointerCapture(e.pointerId); } catch {}
+    const b = $('#zpic').getBoundingClientRect(), c = e.target.dataset.c;
+    const r = editing;
+    // resizing pins the opposite corner; moving remembers where in the frame you grabbed it
+    const anchor = c ? {x: c.includes('w') ? r.x + r.w : r.x, y: c.includes('n') ? r.y + r.h : r.y} : null;
+    drag = {b, c, anchor, dx: (e.clientX - b.left) / b.width - r.x, dy: (e.clientY - b.top) / b.height - r.y};
+  });
+  f.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const {b, c, anchor} = drag, img = $('#zpic'), W = img.naturalWidth, H = img.naturalHeight;
+    const px = (e.clientX - b.left) / b.width, py = (e.clientY - b.top) / b.height;
+    if (!c) { editing = fitRect({...editing, x: px - drag.dx, y: py - drag.dy}); }
+    else {
+      const left = c.includes('w'), up = c.includes('n');
+      let w = Math.max(Math.abs(px - anchor.x), Math.abs(py - anchor.y) * H / W * 16 / 9);
+      w = Math.min(w, left ? anchor.x : 1 - anchor.x, (up ? anchor.y : 1 - anchor.y) * H / W * 16 / 9);
+      const n = fitRect({...editing, w});
+      editing = {...n, x: left ? anchor.x - n.w : anchor.x, y: up ? anchor.y - n.h : anchor.y};
+    }
+    drawFrame();
+  });
+  const stop = () => { drag = null; };
+  f.addEventListener('pointerup', stop); f.addEventListener('pointercancel', stop);
+}
+$('#zimg').addEventListener('wheel', e => {
+  if (!editing) return;
+  e.preventDefault(); editing = scaleRect(editing, e.deltaY > 0 ? 1.05 : 1 / 1.05); drawFrame();
+}, {passive: false});
+async function saveCrop(rect) {
+  const p = visible()[zoomAt]; if (!p) return;
+  const rot = rect ? editRot : 0;
+  try {
+    const r = await api('/api/crop', {ref: p.ref, rect, rot});
+    p.crop = r.crop; editRot = savedRot(p); endCrop(); drawZoom(); sig = ''; draw();
+    toast(rect ? 'Saved: the film shows this part of the photo' + (rot ? `, turned ${rot}°` : '') : 'Back to the default: no rotation, centre of the photo');
+  } catch (e) { toast(e.message, 'err'); }
+}
+$('#zcrop').onclick = startCrop;
+$('#csave').onclick = () => saveCrop(editing);
+$('#ccentre').onclick = () => saveCrop(null);
+$('#ccancel').onclick = endCrop;
+
+$('#zoom').addEventListener('click', e => { const b = e.target.closest('[data-to]'); if (b) assign(b.dataset.to, [visible()[zoomAt].ref]); });
+$('#zclose').onclick = closeZoom;
+$('#zprev').onclick = () => { editing = null; $('#zoom').classList.remove('cropping'); zoomAt = Math.max(0, zoomAt - 1); drawZoom(); };
+$('#znext').onclick = () => { editing = null; $('#zoom').classList.remove('cropping'); zoomAt = Math.min(visible().length - 1, zoomAt + 1); drawZoom(); };
+$('#zimg').addEventListener('click', e => { if (e.target === $('#zimg') && !editing) closeZoom(); });
+
+// ---------------------------------------------------------------- keyboard
+document.addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input, select, textarea')) return;
+  const k = e.key.toLowerCase();
+  if (zoomAt !== null && editing) {                     // crop mode
+    const step = e.shiftKey ? 0.05 : 0.01;
+    const nudge = (dx, dy) => { editing = fitRect({...editing, x: editing.x + dx, y: editing.y + dy}); drawFrame(); };
+    if (k === 'enter') { e.preventDefault(); saveCrop(editing); }
+    else if (k === 'escape') { e.preventDefault(); endCrop(); }
+    else if (k === 'r') { e.preventDefault(); saveCrop(null); }
+    else if (k === '[') { e.preventDefault(); setRot(editRot - 90, true); }
+    else if (k === ']') { e.preventDefault(); setRot(editRot + 90, true); }
+    else if (k === ',' || k === '<') { e.preventDefault(); setRot(editRot - (k === '<' || e.shiftKey ? 5 : 0.5), false); }
+    else if (k === '.' || k === '>') { e.preventDefault(); setRot(editRot + (k === '>' || e.shiftKey ? 5 : 0.5), false); }
+    else if (k === 'arrowleft') { e.preventDefault(); nudge(-step, 0); }
+    else if (k === 'arrowright') { e.preventDefault(); nudge(step, 0); }
+    else if (k === 'arrowup') { e.preventDefault(); nudge(0, -step); }
+    else if (k === 'arrowdown') { e.preventDefault(); nudge(0, step); }
+    else if (k === '+' || k === '=') { e.preventDefault(); editing = scaleRect(editing, 1.05); drawFrame(); }
+    else if (k === '-' || k === '_') { e.preventDefault(); editing = scaleRect(editing, 1 / 1.05); drawFrame(); }
+    return;
+  }
+  if (zoomAt !== null) {
+    if (k === 'c' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); startCrop(); return; }
+    if (k === 'escape' || k === ' ') { e.preventDefault(); closeZoom(); }
+    else if (k === 'arrowleft') { e.preventDefault(); $('#zprev').click(); }
+    else if (k === 'arrowright') { e.preventDefault(); $('#znext').click(); }
+    else if (KEYS[k] && !e.metaKey && !e.ctrlKey) { e.preventDefault(); assign(KEYS[k], [visible()[zoomAt].ref]); }
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && k === 'a') { e.preventDefault(); sel = new Set(visible().map(p => p.ref)); draw(); return; }
+  if (e.metaKey || e.ctrlKey) return;
+  if (k === 'escape') { sel.clear(); draw(); }
+  else if (k === ' ' || k === 'enter') { e.preventDefault(); if (visible().length) openZoom(focus); }
+  else if (k === 'c') { e.preventDefault(); if (visible().length) { openZoom(focus); const img = $('#zpic'); img.complete && img.naturalWidth ? startCrop() : img.addEventListener('load', startCrop, {once: true}); } }
+  else if (k === 'arrowright') { e.preventDefault(); moveFocus(1, e.shiftKey); }
+  else if (k === 'arrowleft') { e.preventDefault(); moveFocus(-1, e.shiftKey); }
+  else if (k === 'arrowdown') { e.preventDefault(); moveFocus(cols(), e.shiftKey); }
+  else if (k === 'arrowup') { e.preventDefault(); moveFocus(-cols(), e.shiftKey); }
+  else if (KEYS[k]) { e.preventDefault(); assign(KEYS[k], targets()); }
+});
+
+// ---------------------------------------------------------------- view and import
+$('#view').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; view = b.dataset.v; store.set('view', view);
+  document.querySelectorAll('#view button').forEach(x => x.classList.toggle('on', x === b)); sig = ''; draw(); };
+document.querySelectorAll('#view button').forEach(x => x.classList.toggle('on', x.dataset.v === view));
+$('#size').value = store.get('size') || 190;
+const applySize = () => { document.documentElement.style.setProperty('--tw', $('#size').value + 'px'); store.set('size', $('#size').value); };
+$('#size').oninput = applySize; applySize();
+
+let watching = null;
+async function watchJob(id) {
+  watching = id;
+  while (watching === id) {
+    await new Promise(r => setTimeout(r, 1000));
+    let s; try { s = await api('/api/state'); } catch { continue; }
+    const j = s.jobs.find(x => x.id === id);
+    if (!j) break;
+    $('#job').textContent = j.status === 'running' ? `${j.label}: ${Math.round(j.progress * 100)}%` : `${j.label}: ${j.status}`;
+    if (j.status === 'done' || j.status === 'error') {
+      if (j.status === 'error') toast(`${j.label}: ${j.error}`, 'err');
+      else toast(`${j.label}: done${j.result && j.result.added !== undefined ? `, ${j.result.added} new photos in the inbox` : ''}`);
+      setTimeout(() => { if (watching === id) $('#job').textContent = ''; }, 4000);
+      watching = null; await load(); usageSoon(0); break;
+    }
+  }
+}
+$('#impSel').onclick = async () => {
+  try { const r = await api('/api/import', {selection: true}); toast('Importing the photos selected in the Photos app…'); tab = 'inbox'; sig = ''; watchJob(r.job); }
+  catch (e) { toast(e.message, 'err'); }
+};
+let albumsLoaded = false;
+$('#impAlbum').addEventListener('focus', async () => {
+  if (albumsLoaded) return; albumsLoaded = true;
+  const s = $('#impAlbum'); s.innerHTML = '<option value="">loading albums from Photos…</option>';
+  try {
+    const al = await api('/api/albums');
+    s.innerHTML = '<option value="">Import album…</option>' + al.map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${a.count})</option>`).join('');
+  } catch (e) { s.innerHTML = '<option value="">Import album…</option>'; albumsLoaded = false; toast(e.message, 'err'); }
+});
+$('#impAlbum').onchange = async () => {
+  const s = $('#impAlbum'), id = s.value, name = s.selectedOptions[0].textContent.replace(/ \(\d+\)$/, '');
+  s.value = ''; if (!id) return;
+  try { const r = await api('/api/import', {album_id: id, album_name: name}); toast(`Importing album “${name}”…`); tab = 'inbox'; sig = ''; watchJob(r.job); }
+  catch (e) { toast(e.message, 'err'); }
+};
+$('#impFiles').onclick = async () => {
+  toast('Pick photos in the macOS window (it may be behind this one).');
+  try {
+    let r = await api('/api/choose', {to: 'inbox'});
+    if (r.conflicts.length) toast(`${r.conflicts.length} already in the inbox with the same name; skipped`, 'err');
+    for (const e of r.errors) toast(e, 'err');
+    if (r.saved.length) toast(`${r.saved.length} photos added to the inbox`);
+    tab = 'inbox'; sig = ''; load();
+  } catch (e) { toast(e.message, 'err'); }
+};
+
+load(); loadUsage();
+setInterval(() => { if (document.visibilityState === 'visible' && zoomAt === null) loadUsage(); }, 15000);
+(function poll() {                                      // pick up suggestions as they're worked out, and files added in Finder
+  setTimeout(async () => {
+    if (!watching && zoomAt === null && document.visibilityState === 'visible') await load();
+    poll();
+  }, L && L.unscored ? 2000 : 6000);
+})();
+</script>
+</body>
+</html>

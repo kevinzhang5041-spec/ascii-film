@@ -1,0 +1,24 @@
+# Only code, docs and settings are published. Everything else in this folder stays on this machine:
+# your clips (input/, output/), photos (images/, photorun/), soundtrack (audio/), renders, caches and the venv.
+# This is an allow-list: a new file is private until it's added below.
+/*
+!/.gitignore
+!/README.md
+!/SOUNDFILM.md
+!/ascii
+!/film
+!/setup.sh
+!/ascii_film.py
+!/studio.py
+!/dashboard.py
+!/presets.json
+!/requirements.txt
+!/requirements-film.txt
+!/config.yaml
+!/looks/
+!/web/
+!/soundfilm/
+
+__pycache__/
+*.pyc
+.DS_Store

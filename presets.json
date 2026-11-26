@@ -1,0 +1,53 @@
+{
+  "focus": {
+    "description": "Coarse mono blocks resolve into fine colour detail across the clip",
+    "cols": "0%:20,100%:160",
+    "color": "0%:mono,100%:color",
+    "charset": "standard"
+  },
+  "dissolve": {
+    "description": "The reverse of focus: fine colour breaks down into coarse mono (good for the last clip)",
+    "cols": "0%:160,100%:20",
+    "color": "0%:color,100%:mono",
+    "charset": "standard"
+  },
+  "canopy": {
+    "description": "Dense colour detail, the full 70-step character ramp",
+    "cols": "180",
+    "color": "color",
+    "charset": "detailed",
+    "contrast": "1.15"
+  },
+  "moss": {
+    "description": "Green-tinted, partly coloured, dark forest floor",
+    "cols": "130",
+    "color": "0.35",
+    "charset": "detailed",
+    "tint": "#9cc47a",
+    "bg": "#0b0f0c",
+    "contrast": "1.2"
+  },
+  "terminal": {
+    "description": "Phosphor green on black",
+    "cols": "140",
+    "color": "mono",
+    "charset": "standard",
+    "tint": "#33ff66",
+    "bg": "#000000"
+  },
+  "paper": {
+    "description": "Ink on paper (inverted: dark areas get dense characters)",
+    "cols": "120",
+    "color": "mono",
+    "charset": "detailed",
+    "tint": "#1b1b1b",
+    "bg": "#f2ede3",
+    "invert": "true"
+  },
+  "blocks": {
+    "description": "Chunky shaded blocks in colour",
+    "cols": "90",
+    "color": "color",
+    "charset": "blocks"
+  }
+}

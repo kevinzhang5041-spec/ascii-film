@@ -1,0 +1,128 @@
+# soundfilm: every rule and threshold that turns the soundtrack into the film.
+#
+# Edit, then re-run ./film. The analysis (analysis.json) is cached and only recomputed when the track
+# or something in the `analysis:` block changes. Everything else re-applies instantly.
+# All feature values below are normalised 0-1 over the whole track (see analysis.png).
+
+seed: 1                         # same seed + same inputs + same config = the same film, frame for frame
+
+paths:                          # relative to the project folder (./film --root DIR, default: this folder)
+  audio: audio/track            # extension optional: .wav .aif .flac .mp3 .m4a
+  images: images                # holds bright/ dark/ texture/ (jpg, png, heic)
+  analysis: analysis.json
+  renders: renders
+
+video:
+  fps: 24
+  width: 1920
+  height: 1080
+  preset: veryfast              # x264 preset
+  crf: 18                       # x264 quality (lower = bigger, better)
+  audio_bitrate: 320k
+
+preview:                        # ./film --preview START END
+  width: 640
+  height: 360
+  preset: ultrafast
+  crf: 26
+
+analysis:                       # changing anything here re-runs the analysis
+  sample_rate: 48000            # 48000 / 24 fps = exactly 2000 samples per frame
+  n_fft: 2048                   # window for RMS, centroid and flatness (about one frame)
+  onset_hop: 250                # onset envelope resolution in samples (about 5 ms)
+  onset_n_fft: 1024
+  onset_delta: 0.07             # peak-picking threshold: raise it to ignore weaker onsets
+  onset_wait_ms: 30             # minimum gap between two detected onsets
+  onset_backtrack: false        # move each onset back to the preceding energy minimum
+  onset_offset_ms: 0            # shift every onset by this much before snapping it to a frame
+  onset_strength_ms: 10         # onset strength sums the envelope over +-this around each peak
+  onset_loudness_weight: 0.5    # onset strength = (1 - w) x spectral jump + w x loudness at the onset
+  gate_db: -60                  # frames quieter than this (dB below the loudest frame) are left out of normalising
+  rms_range_db: 48              # RMS 0-1 covers [loudest - this, loudest] in dB
+  normalize_percentiles: [2, 98]   # centroid / flatness / onset strength: these percentiles become 0 and 1
+
+editing:
+  no_repeat_within: 12          # an image can't come back until this many other cuts have happened
+  hold:                         # onset strength -> frames at full exposure after the cut
+    min_frames: 1               # weakest onset
+    max_frames: 4               # strongest onset
+    curve: 1.0                  # >1: mostly short holds, <1: mostly long ones
+  between_onsets:
+    hold_if_gap_at_most: 3      # next onset this close (in frames): keep the image up until it
+    decay: 0.5                  # otherwise, after the hold, brightness is multiplied by this every frame...
+    black_below: 0.08           # ...and the frame drops to black leader once it falls below this
+  silence:
+    threshold_db: -45           # RMS below this (dB below the loudest frame) = silence = pure black
+    beats_hold: false           # true: silence blacks out even the hold frames right after an onset
+  pools:                        # spectral centroid at the cut -> which folder the image comes from
+    centroid_window: 2          # frames averaged (loudness-weighted) from the onset on
+    bright_above: 0.62          # above this: images/bright
+    dark_below: 0.38            # below this: images/dark. In between: images/texture
+  flash:                        # very strong onsets: the cut frame is an inverted flash
+    enabled: true
+    strength_above: 0.9
+    ink: "#000000"              # black text...
+    paper: "#ffffff"            # ...on white
+
+ascii:
+  resolution:                   # RMS -> characters across the frame
+    cols_quiet: 15
+    cols_loud: 200
+    curve: 1.0
+    smooth_frames: 3            # Gaussian smoothing (sigma, in frames) so the grid doesn't jitter
+    max_step: 24                # largest change in columns from one frame to the next
+  charset:                      # spectral centroid -> glyph ramp
+    smooth_frames: 2
+    switch_on: frame            # frame: the ramp follows the sound every frame. cut: one ramp per shot
+    sort_by_coverage: true      # order each ramp sparse -> dense by measured ink, whatever order you type
+    keep_black: true            # make every ramp start with a space, so dark areas stay black
+    bands:                      # first band whose `above` the centroid reaches wins (keep them high -> low)
+      - {name: glassy, above: 0.70, chars: " .:'"}
+      - {name: fine,   above: 0.45, chars: " .:-=+*#%@"}
+      - {name: dense,  above: 0.22, chars: " @#%&"}
+      - {name: blocks, above: 0.00, chars: " ░▒▓█"}
+  color:                        # spectral flatness -> mono / colour mix
+    noisy_mix: 0.0              # flatness 1 (noise) -> this mix (0 = monochrome)
+    tonal_mix: 1.0              # flatness 0 (pure tone) -> this mix (1 = full colour)
+    curve: 1.0
+    smooth_frames: 2
+    saturation: 1.0             # the photos' own colours x this: 1 = as shot, 2 = twice as vivid, 0 = grey
+  tint: "#f2ede3"               # glyph colour in monochrome
+  background: "#000000"
+  contrast: 1.15
+  auto_level: true              # stretch each image's tones to the full range first, so dark scans still read
+  black_point: 0.15             # tones below this go to black before glyphs are chosen (keeps dark ground empty)
+
+treatments:                     # each one: enabled + intensity (0-1)
+  exposure:                     # RMS -> brightness: quiet dims the image, loud blows it out toward white
+    enabled: true
+    intensity: 0.5
+    cut_floor: 0.5              # cut + hold frames are exposed at least this much (0.5 = neutral), so even a
+                                # whisper-quiet onset is a visible cut; 0 = let quiet cuts go dark
+  crop_zoom:                    # per cut: random crop into the image, zoom 1x .. (1 + 2 x intensity)
+    enabled: true
+    intensity: 0.6
+    respect_hand_crops: true    # photos you cropped by hand (sorter) are shown exactly as framed, no random zoom
+  char_jitter:                  # per frame: swap this fraction of glyphs for random ones
+    enabled: true
+    intensity: 0.12
+    follow: flatness            # scale it by a feature: none | rms | flatness | centroid
+    include_blank: false        # true: blank cells can sparkle too
+  frame_jitter:                 # per frame: gate weave, up to intensity x 1.5% of the frame width
+    enabled: true
+    intensity: 0.4
+  grain:                        # per frame: emulsion grain on the ink only (black / flash paper stay clean)
+    enabled: true
+    intensity: 0.3
+  color_shift:                  # per cut: hue rotation up to intensity x 180 degrees
+    enabled: true
+    intensity: 0.25
+  layering:                     # dense passages: blend a second image into the shot
+    enabled: true
+    intensity: 0.5              # blend amount
+    onsets_per_sec: 6           # "dense" = at least this many onsets per second...
+    window_frames: 12           # ...counted over this many frames around the cut
+    blend: screen               # screen | average
+
+debug:                          # ./film --debug overlay
+  timeline_seconds: 2.0         # audio shown either side of the playhead in the bottom strip

@@ -1,0 +1,1030 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soundfilm</title>
+<style>
+:root {
+  --bg: #0c0e0c; --panel: #131613; --panel-2: #191d19; --line: #232823; --line-2: #2f362f;
+  --text: #e7e9e4; --muted: #8f968d; --faint: #5f665e;
+  --accent: #a8d47f; --accent-ink: #0d160a; --accent-soft: rgba(168, 212, 127, .12);
+  --warn: #e7b65c; --warn-soft: rgba(231, 182, 92, .12);
+  --err: #ef7a6a; --err-soft: rgba(239, 122, 106, .12);
+  --info: #86b9e6; --info-soft: rgba(134, 185, 230, .12);
+  --bright: #ffd23c; --texture: #6ed778; --dark: #5a96ff;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
+button, input, select, textarea { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+.top { display: flex; align-items: center; gap: 20px; padding: 14px 24px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 5; background: rgba(12, 14, 12, .92); backdrop-filter: blur(8px); }
+.brand { font: 600 15px var(--mono); letter-spacing: .02em; white-space: nowrap; }
+.brand .glyph { color: var(--accent); margin-right: 6px; }
+.brand .sub { color: var(--faint); font-weight: 400; }
+.summary { font: 12.5px var(--mono); color: var(--muted); display: flex; gap: 4px 14px; flex-wrap: wrap; }
+.summary b { color: var(--text); font-weight: 500; }
+.summary .warn { color: var(--warn); }
+.root { margin-left: auto; font: 12px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 34vw; cursor: pointer; }
+.root:hover { color: var(--muted); }
+.offline { color: var(--err); font: 12px var(--mono); }
+@media (max-width: 700px) { .top { flex-wrap: wrap; gap: 6px 16px; padding: 12px 16px; } .root { display: none; } }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 16px 24px 48px;
+  max-width: 1560px; margin: 0 auto; align-items: start; }
+.stack { display: grid; gap: 16px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+.h { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.h h2 { margin: 0; font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.h .grow { flex: 1; }
+@media (max-width: 1040px) { main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 40px; } }
+
+.btn { text-decoration: none; color: inherit; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 7px 12px;
+  font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: border-color .15s, background .15s; }
+.btn:hover:not(:disabled) { border-color: #4a544a; background: #1e231e; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: #b8e08f; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 6px 8px; }
+.btn.ghost:hover:not(:disabled) { color: var(--text); background: var(--panel-2); border-color: var(--line-2); }
+.btn.sm { padding: 4px 9px; font-size: 12px; }
+.in { background: #0f120f; border: 1px solid var(--line-2); border-radius: 8px; padding: 7px 9px;
+  font: 13px var(--mono); width: 100%; min-width: 0; }
+.in:focus, .btn:focus-visible, textarea:focus { outline: 2px solid rgba(168, 212, 127, .4); outline-offset: 1px; }
+.chk { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
+.chk input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+.badge { display: inline-block; font: 11px/1 var(--mono); padding: 5px 8px; border-radius: 6px; background: #1c211c; color: var(--muted); white-space: nowrap; }
+.badge.ok { color: var(--accent); background: var(--accent-soft); }
+.badge.warn { color: var(--warn); background: var(--warn-soft); }
+.badge.err { color: var(--err); background: var(--err-soft); }
+.badge.run { color: var(--info); background: var(--info-soft); }
+.note { font: 12px var(--mono); color: var(--faint); }
+.note.warn { color: var(--warn); } .note.err { color: var(--err); } .note.ok { color: var(--accent); }
+
+/* player */
+.screen { position: relative; background: #000; border-radius: 8px; aspect-ratio: 16 / 9; width: 100%; max-height: 62vh;
+  overflow: hidden; display: grid; place-items: center; }
+.screen video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.screen .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+  color: var(--faint); font: 13px/1.8 var(--mono); }
+.caption { margin-top: 8px; font: 12px var(--mono); color: var(--muted); min-height: 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.caption b { color: var(--text); font-weight: 500; }
+.rbar { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.f { display: grid; gap: 4px; }
+.f label { font-size: 12px; color: var(--muted); }
+.f .in { width: 84px; }
+.rbar .chks { display: flex; gap: 14px; padding-bottom: 8px; }
+.rbar .go { display: flex; gap: 8px; margin-left: auto; }
+.hint { margin-top: 8px; }
+
+/* the photo panel beside the player: the real photo behind the current frame */
+.stagewrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.stagewrap.withphoto { grid-template-columns: minmax(0, 1fr) minmax(170px, 30%); }
+.ppane { display: flex; flex-direction: column; min-width: 0; gap: 6px; }
+.pbox { position: relative; flex: 1; min-height: 140px; background: #070807; border-radius: 8px; overflow: hidden; }
+.pbox img { position: absolute; display: block; transition: opacity .12s; }
+.pbox img.dim { opacity: .22; }
+.pcrop { position: absolute; border: 1.5px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0, 0, 0, .5); pointer-events: none; }
+.pbox .pnote { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 12px;
+  color: var(--faint); font: 12px var(--mono); }
+.pcap { font: 11.5px var(--mono); color: var(--muted); min-height: 34px; overflow: hidden; }
+.pcap b { color: var(--text); font-weight: 500; }
+.pcap .k { display: inline-block; min-width: 52px; }
+@media (max-width: 760px) { .stagewrap.withphoto { grid-template-columns: minmax(0, 1fr); } .pbox { flex: none; height: 260px; } }
+
+/* inputs */
+.drop { border: 1.5px dashed var(--line-2); border-radius: 10px; padding: 10px 12px; transition: border-color .15s, background .15s; }
+.drop + .drop { margin-top: 10px; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop .dh { display: flex; align-items: center; gap: 8px; font: 12.5px var(--mono); }
+.drop .dh .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.drop .dh .name { color: var(--text); font-weight: 500; }
+.drop .dh .grow { flex: 1; }
+.drop .dh .count { color: var(--muted); }
+.drop .sub { font: 11.5px var(--mono); color: var(--faint); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop a { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; max-height: 118px; overflow: auto; }
+.thumbs img { height: 36px; border-radius: 3px; display: block; background: #000; cursor: zoom-in; }
+
+/* activity */
+.job { padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.job:first-of-type { border-top: 0; padding-top: 0; }
+.job .jh { display: flex; gap: 8px; align-items: center; font: 12.5px var(--mono); }
+.job .jh .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job.sel .label { color: var(--accent); }
+.job .t { color: var(--faint); font: 11.5px var(--mono); }
+.pbar { height: 4px; background: #1f241f; border-radius: 2px; overflow: hidden; margin-top: 6px; }
+.pbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+pre.log { margin: 10px 0 0; background: #0b0d0b; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+  font: 11.5px/1.55 var(--mono); color: #b9beb6; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+pre.log .e { color: var(--err); }
+.jobs-list { max-height: 210px; overflow: auto; }
+
+/* analysis */
+.plotbox { background: #fff; border-radius: 8px; overflow: hidden; cursor: zoom-in; min-height: 120px; display: grid; place-items: center; }
+.plotbox img { width: 100%; display: block; }
+.plotbox .empty { color: #777; font: 13px var(--mono); padding: 40px 20px; text-align: center; }
+.tabs { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.tabs button { background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 3px 10px; font: 11.5px var(--mono);
+  color: var(--muted); cursor: pointer; }
+.tabs button.on { color: var(--text); border-color: #4a544a; background: var(--panel-2); }
+
+/* renders */
+.rend { padding: 10px 0; border-top: 1px solid var(--line); }
+.rend:first-child { border-top: 0; padding-top: 0; }
+.rend .rh { display: flex; gap: 8px; align-items: center; }
+.rend .rn { flex: 1; font: 500 13px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.rend.sel .rn { color: var(--accent); }
+.rend .rm { font: 11.5px var(--mono); color: var(--faint); margin-top: 3px; }
+.rend .ra { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.rend pre.log { max-height: 200px; font-size: 11px; }
+.rlist { max-height: 560px; overflow: auto; }
+
+/* config */
+.cfgwrap { display: grid; gap: 10px; }
+textarea.cfg { width: 100%; height: 460px; resize: vertical; background: #0b0d0b; border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 12px; font: 12.5px/1.55 var(--mono); color: var(--text); tab-size: 2; white-space: pre; }
+.cfgbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cfgbar .grow { flex: 1; }
+.modified { font: 11px var(--mono); color: var(--warn); }
+
+/* tune */
+.tune { display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 18px; align-items: start; }
+.tgroups { columns: 2 340px; column-gap: 14px; }
+.tgroup { break-inside: avoid; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 6px; margin: 0 0 14px; background: #111411; }
+.tgroup h3 { margin: 0 0 6px; font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tgroup .gnote { font: 11px var(--mono); color: var(--faint); margin: -2px 0 6px; }
+.trow { display: grid; grid-template-columns: 136px minmax(0, 1fr) 66px 16px; gap: 8px; align-items: center; padding: 3px 0; }
+.trow > label { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow > label.chk { gap: 6px; }
+.trow.mod > label { color: var(--warn); }
+.trow input[type=range] { width: 100%; margin: 0; }
+.trow input[type=range]:disabled { opacity: .3; }
+.trow .num { padding: 4px 6px; font-size: 12px; text-align: right; }
+.trow .wide2 { grid-column: 2 / 4; }
+.trow .colorpair { grid-column: 2 / 4; display: flex; gap: 6px; }
+.trow .colorpair input[type=color] { width: 34px; min-width: 34px; height: 28px; padding: 2px; background: #0f120f; border: 1px solid var(--line-2); border-radius: 6px; }
+.trow .chars { font: 13px var(--mono); padding: 4px 6px; }
+.trow .reset { background: none; border: 0; color: var(--faint); cursor: pointer; padding: 0; font-size: 13px; visibility: hidden; }
+.trow .reset.on { visibility: visible; }
+.trow .reset:hover { color: var(--text); }
+.tlive { position: sticky; top: 70px; min-width: 0; }
+.lookbox { position: relative; background: #000; border-radius: 8px; aspect-ratio: 16 / 9; overflow: hidden; cursor: zoom-in; display: grid; place-items: center; }
+.lookbox img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.lookbox .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; color: var(--faint); font: 12px var(--mono); }
+.lookcap { margin-top: 6px; }
+.srow { margin-top: 11px; }
+.srow .sl { display: flex; justify-content: space-between; gap: 10px; font: 11.5px var(--mono); color: var(--muted); margin-bottom: 4px; }
+.srow .sl b { color: var(--text); font-weight: 500; }
+.sbar { display: flex; height: 10px; border-radius: 3px; overflow: hidden; background: #1f241f; }
+.sbar i { display: block; height: 100%; min-width: 0; }
+.sbar.saved { height: 3px; margin-top: 2px; opacity: .5; }
+.slegend { display: flex; flex-wrap: wrap; gap: 2px 12px; font: 11px var(--mono); color: var(--faint); margin-top: 4px; }
+.slegend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; background: var(--c); }
+.tbar { display: flex; gap: 8px; align-items: center; }
+@media (max-width: 1180px) { .tune { grid-template-columns: minmax(0, 1fr); } .tlive { position: static; } }
+@media (max-width: 520px) { .trow { grid-template-columns: 104px minmax(0, 1fr) 58px 14px; gap: 6px; } }
+
+.spin { position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .15); border-top-color: var(--accent); animation: rot .7s linear infinite; opacity: 0;
+  transition: opacity .2s; pointer-events: none; }
+.spin.on { opacity: 1; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* lightbox, confirm box, toasts */
+.lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, .86); z-index: 20; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; padding: 2vh 2vw; cursor: zoom-out; }
+.lightbox img { max-width: 100%; max-height: 88vh; min-height: 0; display: block; border-radius: 6px; background: #fff; }
+.lbbar { display: flex; align-items: center; gap: 10px; width: min(900px, 100%); background: var(--panel); border: 1px solid var(--line-2);
+  border-radius: 10px; padding: 8px 10px 8px 14px; cursor: default; font: 12.5px var(--mono); }
+.lbbar .grow { flex: 1; }
+.lbbar .lbname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.askbg { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); z-index: 40; display: grid; place-items: center; padding: 16px; }
+.askbox { background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; width: min(520px, 100%); padding: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.askbox h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.askbox .body { font-size: 13px; color: var(--muted); max-height: 50vh; overflow: auto; }
+.askbox ul { margin: 0 0 10px; padding-left: 18px; font: 12.5px/1.6 var(--mono); color: var(--text); }
+.askbox code { font: 12px var(--mono); color: var(--text); }
+.askbox .act { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 30; max-width: min(460px, 92vw); }
+.toast { background: #1b201b; border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 8px;
+  padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 30px rgba(0, 0, 0, .4); }
+.toast.err { border-left-color: var(--err); } .toast.warn { border-left-color: var(--warn); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="glyph">░▒▓</span>soundfilm <span class="sub">sound makes image</span></div>
+  <div class="summary" id="summary"></div>
+  <span class="offline" id="offline" hidden>dashboard stopped: run ./film dashboard</span>
+  <div class="root" id="root" title="Show the project folder in Finder"></div>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="h"><h2>Player</h2><div class="grow"></div>
+      <button class="btn sm ghost" id="btnPhoto" title="The real photo behind the current frame, and the part the film shows">Show photo</button></div>
+    <div class="stagewrap" id="stagewrap">
+      <div class="screen">
+        <video id="video" controls playsinline preload="metadata"></video>
+        <div class="empty" id="videoEmpty">No render yet.<br>Add a track and scans, then render a preview.</div>
+      </div>
+      <aside class="ppane" id="ppane" hidden>
+        <div class="pbox" id="pbox"><img id="pimg" alt=""><div class="pcrop" id="pcrop" hidden></div><div class="pnote" id="pnote">Play or scrub the video.</div></div>
+        <div class="pcap" id="pcap"></div>
+      </aside>
+    </div>
+    <div class="caption" id="caption"></div>
+    <div class="rbar">
+      <div class="f"><label for="pStart">preview from (s)</label><input class="in" id="pStart" type="number" step="0.5" min="0"></div>
+      <div class="f"><label for="pEnd">to (s)</label><input class="in" id="pEnd" type="number" step="0.5" min="0"></div>
+      <div class="f"><label for="seed">seed</label><input class="in" id="seed" type="number" step="1" placeholder="config"></div>
+      <div class="chks">
+        <label class="chk"><input type="checkbox" id="debug"> debug overlay</label>
+        <label class="chk"><input type="checkbox" id="verifyAfter" checked> verify</label>
+      </div>
+      <div class="go">
+        <button class="btn primary" id="btnPreview">Render preview</button>
+        <button class="btn" id="btnFull">Render full film</button>
+      </div>
+    </div>
+    <div class="hint note" id="renderHint"></div>
+  </section>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="h"><h2>Inputs</h2><div class="grow"></div><a class="btn sm" href="/sort" title="Import from Photos and choose what goes where">Sort photos…</a></div>
+      <div id="inputs"></div>
+    </section>
+    <section class="panel">
+      <div class="h"><h2>Activity</h2><div class="grow"></div><span class="note" id="queueNote"></span></div>
+      <div class="jobs-list" id="jobs"></div>
+      <pre class="log" id="log" hidden></pre>
+    </section>
+  </div>
+
+  <section class="panel wide" id="tunePanel">
+    <div class="h">
+      <h2>Tune</h2><span class="note">every rule of the film; changes show on the right before you save</span>
+      <div class="grow"></div>
+      <span class="modified" id="tuneCount" hidden></span>
+      <div class="tbar">
+        <button class="btn sm ghost" id="tuneDiscard" disabled>Discard</button>
+        <button class="btn sm" id="tuneSave" disabled>Save</button>
+        <button class="btn sm primary" id="tuneSavePreview" disabled>Save &amp; render preview</button>
+      </div>
+    </div>
+    <div class="tune">
+      <div class="tgroups" id="tune"><div class="note">Loading config…</div></div>
+      <aside class="tlive">
+        <div class="lookbox" id="lookBox"><img id="lookImg" alt="" hidden><div class="empty" id="lookEmpty">Add a track and photos to see the effect live.</div><div class="spin" id="lookSpin"></div></div>
+        <div class="note lookcap" id="lookCap"></div>
+        <div id="tstats"></div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="h">
+      <h2>Analysis</h2>
+      <span id="anState"></span>
+      <div class="grow"></div>
+      <button class="btn sm" id="btnAnalyze">Analyse</button>
+      <button class="btn sm ghost" id="btnReanalyze" title="Ignore analysis.json and analyse again">Re-analyse</button>
+      <button class="btn sm ghost" id="btnPlotRange" title="Plot the preview range">Plot preview range</button>
+    </div>
+    <div class="tabs" id="plotTabs"></div>
+    <div class="plotbox" id="plotbox" style="margin-top:10px"><div class="empty">No analysis yet.</div></div>
+  </section>
+
+  <section class="panel">
+    <div class="h"><h2>Renders</h2><div class="grow"></div><button class="btn sm ghost" id="btnRendersDir">Show in Finder</button></div>
+    <div class="rlist" id="renders"></div>
+  </section>
+
+  <section class="panel wide">
+    <div class="h"><h2>config.yaml</h2><span class="note" id="cfgPath"></span><span class="modified" id="cfgMod" hidden>unsaved</span><div class="grow"></div></div>
+    <div class="cfgwrap">
+      <textarea class="cfg" id="cfg" spellcheck="false" autocomplete="off"></textarea>
+      <div class="cfgbar">
+        <button class="btn primary" id="btnSave">Save</button>
+        <button class="btn" id="btnSavePreview">Save &amp; render preview</button>
+        <button class="btn ghost" id="btnRevert">Revert</button>
+        <div class="grow"></div>
+        <span class="note" id="cfgMsg"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lbbar" id="lbBar" hidden><span class="lbname" id="lbName"></span><span class="grow"></span>
+    <button class="btn sm" id="lbReplace">Replace…</button><button class="btn sm ghost" id="lbClose">Close</button></div>
+  <img id="lightImg" alt="">
+</div>
+<div class="askbg" id="ask" hidden>
+  <div class="askbox" role="dialog" aria-modal="true" aria-labelledby="askTitle">
+    <h3 id="askTitle"></h3><div class="body" id="askBody"></div>
+    <div class="act"><button class="btn ghost" id="askNo">Cancel</button><button class="btn primary" id="askYes">Replace</button></div>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const POOL_COLOR = {bright: 'var(--bright)', texture: 'var(--texture)', dark: 'var(--dark)'};
+const POOL_HINT = {bright: 'high, glassy sounds', texture: 'the middle of the spectrum', dark: 'low, heavy sounds'};
+let S = null, selVideo = null, selPlot = 'analysis.png', selJob = null, timer = null, seen = null;
+let cfgBase = null, cfgSeen = 0, cfgLoading = false;   // editor text as loaded/saved; file time last read
+let cfgVals = null, cfgDefaults = null, pending = {};   // Tune: saved values, defaults, unsaved changes
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)};
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({error: r.statusText}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg, kind = '') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + kind; t.textContent = msg;
+  $('#toasts').append(t);
+  setTimeout(() => t.remove(), kind === 'err' ? 9000 : 4500);
+}
+function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
+const fmtT = s => { s = Math.max(0, s); const m = Math.floor(s / 60); return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`; };
+const fmtB = b => b > 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' kB';
+
+async function refresh() {
+  clearTimeout(timer);
+  try {
+    S = await api('/api/state');
+    $('#offline').hidden = true;
+    draw();
+  } catch (e) {
+    $('#offline').hidden = false;
+  }
+  timer = setTimeout(refresh, S && S.busy ? 700 : 2500);
+}
+
+function draw() {
+  drawSummary(); drawInputs(); drawJobs(); drawRenders(); drawPlayer(); drawAnalysis(); drawButtons();
+  const c = S.config || {};
+  if (!cfgLoading && (cfgBase === null || (c.mtime && c.mtime !== cfgSeen))) loadConfig(false);   // first time, or changed on disk
+  if (!lookStarted && S.analysis) { lookStarted = true; simulateSoon(0); }
+  $('#cfgPath').textContent = c.path ? c.path + (c.shared ? '  (shared with the main project)' : '') + (c.builtin ? '  (built-in defaults: Save writes config.yaml)' : '') : '';
+}
+
+function drawSummary() {
+  const a = S.analysis, t = S.track || {}, p = S.pools || {};
+  const parts = [];
+  parts.push(t.name ? `<span><b>${esc(t.name.split('/').pop())}</b></span>` : `<span class="warn">no track</span>`);
+  if (a && !a.unreadable) parts.push(`<span><b>${fmtT(a.duration)}</b> · ${a.frames} frames · <b>${a.onsets}</b> onsets</span>`);
+  parts.push(`<span>${['bright', 'texture', 'dark'].map(k => `${k} <b>${p[k] ? p[k].count : 0}</b>`).join(' · ')}</span>`);
+  if (S.config && S.config.error) parts.push(`<span class="warn">config error</span>`);
+  setHTML($('#summary'), parts.join(''));
+  $('#root').textContent = S.root;
+}
+
+function drawInputs() {
+  const t = S.track || {}, p = S.pools || {};
+  let html = `<div class="drop" data-to="audio">
+    <div class="dh"><span class="dot" style="background:var(--text)"></span><span class="name">track</span><span class="grow"></span>
+      <span class="count">${t.name ? fmtB(t.bytes) : ''}</span><button class="btn sm" data-pick="audio">${t.name ? 'Replace…' : 'Add…'}</button></div>
+    <div class="sub">${t.name ? esc(t.name) : 'wav / flac / mp3 / m4a / aiff'}</div></div>`;
+  for (const k of ['bright', 'texture', 'dark']) {
+    const d = p[k] || {count: 0, files: [], folder: 'images/' + k};
+    html += `<div class="drop" data-to="${k}">
+      <div class="dh"><span class="dot" style="background:${POOL_COLOR[k]}"></span><span class="name">${k}</span>
+        <span class="note">${POOL_HINT[k]}</span><span class="grow"></span><span class="count">${d.count}</span>
+        <button class="btn sm" data-pick="${k}">Add…</button></div>
+      <div class="sub">${esc(d.folder)}/ · jpg / png / heic</div>
+      ${d.files.length ? `<div class="thumbs">${d.files.map(f => `<img loading="lazy" src="${f.thumb}" data-ref="${k}/${esc(f.name)}" title="${esc(f.name)}: click to view or replace" alt="">`).join('')}</div>` : ''}
+    </div>`;
+  }
+  setHTML($('#inputs'), html);
+}
+
+function jobBadge(j) {
+  const cls = {done: 'ok', error: 'err', running: 'run', queued: ''}[j.status] || '';
+  const txt = j.status === 'running' ? Math.round(j.progress * 100) + '%' : j.status;
+  return `<span class="badge ${cls}">${txt}</span>`;
+}
+function drawJobs() {
+  const jobs = (S.jobs || []).slice().reverse();
+  const q = jobs.filter(j => j.status === 'queued').length;
+  $('#queueNote').textContent = q ? `${q} queued` : '';
+  if (!jobs.length) { setHTML($('#jobs'), '<div class="note">Nothing run yet.</div>'); $('#log').hidden = true; return; }
+  const live = jobs.find(j => j.status === 'running');
+  if (live && (!selJob || selJob._auto)) selJob = {id: live.id, _auto: true};
+  const sel = jobs.find(j => selJob && j.id === selJob.id) || jobs[0];
+  setHTML($('#jobs'), jobs.map(j => {
+    const secs = j.finished && j.started ? `${(j.finished - j.started).toFixed(1)} s` : '';
+    return `<div class="job ${j.id === sel.id ? 'sel' : ''}" data-job="${j.id}">
+      <div class="jh"><span class="label">${esc(j.label)}</span><span class="t">${secs}</span>${jobBadge(j)}</div>
+      ${j.status === 'running' ? `<div class="pbar"><i style="width:${(j.progress * 100).toFixed(1)}%"></i></div>` : ''}
+    </div>`;
+  }).join(''));
+  const lines = sel.log.map(esc);
+  if (sel.error) lines.push(`<span class="e">${esc(sel.error)}</span>`);
+  const log = $('#log');
+  log.hidden = !lines.length;
+  const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+  setHTML(log, lines.join('\n'));
+  if (stick) log.scrollTop = log.scrollHeight;
+  watchFinished(jobs);
+}
+function watchFinished(jobs) {
+  const done = jobs.filter(j => j.status === 'done' || j.status === 'error');
+  if (seen === null) { seen = new Set(done.map(j => j.id)); return; }
+  for (const j of done) {
+    if (seen.has(j.id)) continue;
+    seen.add(j.id);
+    if (j.status === 'error') { toast(`${j.label}: ${j.error}`, 'err'); continue; }
+    if (j.result && j.result.video && j.kind === 'render') { selVideo = j.result.video; drawPlayer(); }
+    if (j.result && j.result.plot) { selPlot = j.result.plot; drawAnalysis(); }
+    if (j.result && j.result.contact) lightbox(j.result.contact);
+    if (j.kind === 'analyze') selPlot = 'analysis.png';
+    toast(`${j.label}: done`);
+  }
+}
+
+function renderMeta(r) {
+  const m = r.meta || {};
+  const bits = [m.preview ? `preview ${m.preview[0]}-${m.preview[1]} s` : 'full film'];
+  if (m.frames) bits.push(`${m.frames} frames`);
+  if (m.width) bits.push(`${m.width}x${m.height}`);
+  if (m.seed !== undefined && m.seed !== null) bits.push(`seed ${m.seed}`);
+  if (m.cuts !== undefined) bits.push(`${m.cuts} cuts`);
+  if (m.debug) bits.push('debug');
+  bits.push(fmtB(r.bytes));
+  return bits.join(' · ');
+}
+function verifyBadge(v) {
+  if (!v) return '<span class="badge">not verified</span>';
+  if (v.stale) return '<span class="badge warn">verify out of date</span>';
+  return v.passed ? '<span class="badge ok">PASS</span>' : '<span class="badge err">FAIL</span>';
+}
+function drawRenders() {
+  const rs = S.renders || [];
+  if (!selVideo && rs.length) selVideo = rs[0].name;
+  if (!rs.length) { setHTML($('#renders'), '<div class="note">No renders yet.</div>'); return; }
+  setHTML($('#renders'), rs.map(r => `<div class="rend ${r.name === selVideo ? 'sel' : ''}">
+    <div class="rh"><span class="rn" data-play="${esc(r.name)}" title="Play">${esc(r.name)}</span>${verifyBadge(r.verify)}</div>
+    <div class="rm">${esc(renderMeta(r))}</div>
+    <div class="ra">
+      <button class="btn sm" data-play="${esc(r.name)}">Play</button>
+      <button class="btn sm" data-verify="${esc(r.name)}">Verify</button>
+      <button class="btn sm" data-stills="${esc(r.name)}">${r.contact ? 'Re-export stills' : 'Stills'}</button>
+      ${r.contact ? `<button class="btn sm" data-light="${r.contact}">Contact sheet</button>` : ''}
+      ${r.verify ? `<button class="btn sm ghost" data-toggle="${esc(r.name)}">sync report</button>` : ''}
+    </div>
+    ${r.verify ? `<pre class="log" data-report="${esc(r.name)}" ${openReports.has(r.name) ? '' : 'hidden'}>${esc(r.verify.summary)}</pre>` : ''}
+  </div>`).join(''));
+}
+const openReports = new Set();
+
+function drawPlayer() {
+  const rs = S ? S.renders || [] : [];
+  const r = rs.find(x => x.name === selVideo);
+  const v = $('#video');
+  $('#videoEmpty').hidden = !!r;
+  v.hidden = !r;
+  if (!r) { setHTML($('#caption'), ''); return; }
+  if (v.dataset.src !== r.url) {
+    const keep = v.dataset.name === r.name && !v.paused;
+    v.dataset.src = r.url; v.dataset.name = r.name; v.src = r.url;
+    if (keep) v.play().catch(() => {});
+  }
+  setHTML($('#caption'), `<b>${esc(r.name)}</b><span>${esc(renderMeta(r))}</span>${verifyBadge(r.verify)}`);
+  if (photoOpen) loadEdl(r.name);
+}
+
+function drawAnalysis() {
+  const a = S.analysis, plots = S.plots || [];
+  let st = '';
+  if (!S.track || !S.track.name) st = '<span class="badge warn">no track</span>';
+  else if (!a) st = '<span class="badge">not analysed</span>';
+  else if (a.unreadable) st = '<span class="badge err">analysis.json unreadable</span>';
+  else st = a.fresh ? '<span class="badge ok">up to date</span>' : '<span class="badge warn">out of date: renders re-analyse</span>';
+  setHTML($('#anState'), st);
+  if (!plots.find(p => p.name === selPlot) && plots.length) selPlot = plots[0].name;
+  setHTML($('#plotTabs'), plots.length > 1 ? plots.map(p => `<button class="${p.name === selPlot ? 'on' : ''}" data-plot="${esc(p.name)}">${esc(p.name.replace(/^analysis_?|\.png$/g, '') || 'whole track')}</button>`).join('') : '');
+  const p = plots.find(x => x.name === selPlot);
+  setHTML($('#plotbox'), p ? `<img src="${p.url}" alt="analysis plot" data-light="${p.url}">` : '<div class="empty">No analysis yet. Add a track, then Analyse.</div>');
+}
+
+function drawButtons() {
+  const hasTrack = !!(S.track && S.track.name);
+  const hasImages = ['bright', 'texture', 'dark'].some(k => S.pools && S.pools[k] && S.pools[k].count);
+  const cfgErr = S.config && S.config.error;
+  $('#btnAnalyze').disabled = $('#btnReanalyze').disabled = !hasTrack || cfgErr;
+  $('#btnPlotRange').disabled = !hasTrack || cfgErr;
+  $('#btnPreview').disabled = $('#btnFull').disabled = !hasTrack || !hasImages || cfgErr;
+  const a = S.analysis;
+  if (a && a.duration && $('#pEnd').value === '') { $('#pStart').value = 0; $('#pEnd').value = Math.min(10, Math.floor(a.duration * 2) / 2); }
+  let hint = '';
+  if (cfgErr) hint = `<span class="err">config.yaml: ${esc(S.config.error)}</span>`;
+  else if (!hasTrack) hint = `Click Add… on the track box to pick your soundtrack (wav / flac / mp3 / m4a / aiff). A copy goes in as ${esc((S.track || {}).expected || 'audio/track')} plus its extension, e.g. ${esc((S.track || {}).expected || 'audio/track')}.flac.`;
+  else if (!hasImages) hint = 'Click Add… on the bright / texture / dark boxes to add your scans.';
+  else if (a && a.duration) hint = `Track is ${fmtT(a.duration)} long. A preview renders exactly the frames the full film has there, at 640x360.`;
+  const w = (S.config && S.config.warnings) || [];
+  if (w.length) hint += (hint ? '<br>' : '') + w.map(x => `<span class="warn">${esc(x)}</span>`).join('<br>');
+  setHTML($('#renderHint'), hint);
+}
+
+// ---------------------------------------------------------------- actions
+async function run(path, body) {
+  try { await api(path, body); refresh(); } catch (e) { toast(e.message, 'err'); }
+}
+function previewRange() {
+  const a = parseFloat($('#pStart').value), b = parseFloat($('#pEnd').value);
+  if (!(b > a) || a < 0) { toast('Preview range: the end must be after the start.', 'err'); return null; }
+  return [a, b];
+}
+function renderBody(preview) {
+  const seed = $('#seed').value.trim();
+  return {preview, debug: $('#debug').checked, verify: $('#verifyAfter').checked, seed: seed === '' ? null : parseInt(seed, 10)};
+}
+$('#btnPreview').onclick = () => { const p = previewRange(); if (p) run('/api/render', renderBody(p)); };
+$('#btnFull').onclick = () => run('/api/render', renderBody(null));
+$('#btnAnalyze').onclick = () => run('/api/analyze', {});
+$('#btnReanalyze').onclick = () => run('/api/analyze', {force: true});
+$('#btnPlotRange').onclick = () => { const p = previewRange(); if (p) run('/api/plot', {span: p}); };
+$('#btnRendersDir').onclick = () => run('/api/reveal', {what: 'renders'});
+$('#root').onclick = () => run('/api/reveal', {});
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-play],[data-verify],[data-stills],[data-light],[data-toggle],[data-job],[data-plot],[data-pick]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.play) { selVideo = d.play; drawRenders(); drawPlayer(); $('#video').play().catch(() => {}); }
+  else if (d.verify) run('/api/verify', {video: d.verify});
+  else if (d.stills) run('/api/stills', {video: d.stills});
+  else if (d.light) lightbox(d.light);
+  else if (d.toggle) { openReports.has(d.toggle) ? openReports.delete(d.toggle) : openReports.add(d.toggle); $('#renders')._html = null; drawRenders(); }
+  else if (d.job) { selJob = {id: d.job}; $('#jobs')._html = null; drawJobs(); }
+  else if (d.plot) { selPlot = d.plot; drawAnalysis(); }
+  else if (d.pick) choose(d.pick, t);
+});
+document.addEventListener('click', e => { const im = e.target.closest('.thumbs img'); if (im) lightbox(im.src.replace(/\?.*$/, '') + '?h=1000', im.dataset.ref); });
+let lbRef = null;              // 'bright/IMG_1.jpg' when the lightbox shows an input photo
+function lightbox(src, ref = null) {
+  lbRef = ref;
+  $('#lightImg').src = src; $('#lbName').textContent = ref || ''; $('#lbBar').hidden = !ref; $('#lightbox').hidden = false;
+}
+const closeLightbox = () => { $('#lightbox').hidden = true; };
+$('#lightbox').onclick = e => { if (!e.target.closest('#lbBar')) closeLightbox(); };
+$('#lbClose').onclick = closeLightbox;
+$('#lbReplace').onclick = () => { const ref = lbRef; closeLightbox(); choose(ref.split('/')[0], null, ref); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#ask').hidden) closeLightbox(); });
+
+// An in-page yes/no box (window.confirm may be blocked in an embedded browser).
+function ask(title, bodyHTML, yes = 'Replace') {
+  return new Promise(resolve => {
+    $('#askTitle').textContent = title; $('#askBody').innerHTML = bodyHTML; $('#askYes').textContent = yes;
+    $('#ask').hidden = false; $('#askYes').focus();
+    const key = e => { if (e.key === 'Escape') done(false); };
+    const done = v => {
+      $('#ask').hidden = true; $('#askYes').onclick = $('#askNo').onclick = null;
+      document.removeEventListener('keydown', key); resolve(v);
+    };
+    $('#askYes').onclick = () => done(true); $('#askNo').onclick = () => done(false);
+    document.addEventListener('keydown', key);
+  });
+}
+function conflictText(cs) {
+  const n = cs.reduce((a, c) => a + c.replaces.length, 0);
+  return `<ul>${cs.map(c => `<li><b>${esc(c.name)}</b> replaces ${c.replaces.map(esc).join(', ')}</li>`).join('')}</ul>
+    The old file${n > 1 ? 's move' : ' moves'} to <code>.work/replaced/</code> in the project folder, out of the film. Nothing is deleted.`;
+}
+function conflictTitle(to, cs, old) {
+  if (old) return `Replace ${old}?`;
+  if (to === 'audio') return 'Replace the soundtrack?';
+  return `Replace ${cs.length} file${cs.length > 1 ? 's' : ''} in ${to}?`;
+}
+function report(to, added, kept) {
+  if (added.length) toast(`${kept.length ? 'Replaced' : 'Added'}: ${added.slice(0, 3).join(', ')}${added.length > 3 ? ` and ${added.length - 3} more` : ''}`);
+  if (kept.length) toast(`Old version${kept.length > 1 ? 's' : ''} kept in ${kept[0].split('/').slice(0, 3).join('/')}/`, 'warn');
+  if (to === 'audio' && added.length) run('/api/analyze', {});      // a new track needs a new analysis
+}
+
+// ---------------------------------------------------------------- uploads
+async function upload(to, files) {
+  const added = [], kept = [], conflicts = [];
+  const send = async (f, replace) => {
+    const r = await fetch(`/api/upload?to=${encodeURIComponent(to)}&name=${encodeURIComponent(f.name)}${replace ? '&replace=1' : ''}`, {method: 'POST', body: f});
+    const j = await r.json().catch(() => ({error: r.statusText}));
+    if (r.status === 409 && j.conflict && !replace) { conflicts.push({file: f, name: f.name, replaces: j.replaces}); return; }
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    added.push(j.saved); kept.push(...(j.kept || []));
+  };
+  for (const f of files) { try { await send(f, false); } catch (e) { toast(e.message, 'err'); } }
+  if (conflicts.length && await ask(conflictTitle(to, conflicts), conflictText(conflicts))) {
+    for (const c of conflicts) { try { await send(c.file, true); } catch (e) { toast(e.message, 'err'); } }
+  }
+  report(to, added, kept);
+  refresh();
+}
+// The macOS file chooser, opened by the server: works even where dragging from Finder doesn't
+// (the Claude app's browser pane). The request waits until you pick or cancel.
+async function choose(to, btn, old = null) {
+  if (btn) btn.disabled = true;
+  toast('Pick in the macOS window (it may be behind this one).');
+  try {
+    const r = await api('/api/choose', {to, old});
+    const added = [...r.saved], kept = [...r.kept];
+    for (const e of r.errors) toast(e, 'err');
+    if (r.conflicts.length && await ask(conflictTitle(to, r.conflicts, old), conflictText(r.conflicts))) {
+      const c = await api('/api/confirm', {token: r.token});
+      added.push(...c.saved); kept.push(...c.kept);
+      for (const e of c.errors) toast(e, 'err');
+    }
+    report(to, added, kept);
+  } catch (e) { toast(e.message, 'err'); }
+  if (btn) btn.disabled = false;
+  refresh();
+}
+document.addEventListener('dragover', e => {
+  e.preventDefault();
+  document.querySelectorAll('.drop').forEach(d => d.classList.toggle('over', d.contains(e.target)));
+});
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.querySelectorAll('.drop').forEach(d => d.classList.remove('over')); });
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  document.querySelectorAll('.drop').forEach(d => d.classList.remove('over'));
+  const d = e.target.closest('.drop');
+  if (!d) { toast('Drop onto the track box or one of the image boxes.', 'warn'); return; }
+  upload(d.dataset.to, [...e.dataTransfer.files]);
+});
+
+// ---------------------------------------------------------------- config editor
+const cfgEl = $('#cfg');
+// Reads config.yaml: the values feed the Tune panel; the editor text is replaced unless it has unsaved edits.
+async function loadConfig(replaceEditor) {
+  cfgLoading = true;
+  try {
+    const c = await api('/api/config');
+    cfgSeen = c.mtime; cfgVals = c.values; cfgDefaults = c.defaults;
+    if (replaceEditor || cfgBase === null || cfgEl.value === cfgBase) {
+      cfgEl.value = cfgBase = c.text; $('#cfgMsg').textContent = '';
+    } else if (c.text !== cfgBase) {
+      $('#cfgMsg').className = 'note warn';
+      $('#cfgMsg').textContent = 'config.yaml changed on disk since you started editing: Save overwrites it, Revert loads it';
+    }
+    for (const p of Object.keys(pending)) if (same(pending[p], getPath(cfgVals, p))) delete pending[p];
+    buildTune(); simulateSoon(0);
+  } catch (e) { toast(e.message, 'err'); }
+  cfgLoading = false;
+  cfgDirty();
+}
+function cfgDirty() { $('#cfgMod').hidden = cfgEl.value === cfgBase; }
+cfgEl.addEventListener('input', cfgDirty);
+cfgEl.addEventListener('keydown', e => {
+  if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '  '); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveConfig(); }
+});
+async function saveConfig() {
+  const msg = $('#cfgMsg');
+  try {
+    const r = await api('/api/config', {text: cfgEl.value});
+    cfgBase = cfgEl.value; cfgDirty();
+    msg.className = 'note ' + (r.warnings.length ? 'warn' : 'ok');
+    msg.textContent = r.unchanged ? 'no changes' : (r.warnings.length ? r.warnings.join(' · ') : 'saved' + (r.backup ? ' (old version in .work/config-history/)' : ''));
+    refresh();
+    return true;
+  } catch (e) {
+    msg.className = 'note err'; msg.textContent = e.message;
+    return false;
+  }
+}
+$('#btnSave').onclick = saveConfig;
+$('#btnSavePreview').onclick = async () => { const p = previewRange(); if (p && await saveConfig()) run('/api/render', renderBody(p)); };
+$('#btnRevert').onclick = async () => {
+  if (cfgEl.value === cfgBase || await ask('Discard your unsaved edits?', 'config.yaml goes back to the saved version.', 'Discard')) loadConfig(true);
+};
+window.addEventListener('beforeunload', e => {
+  if ((cfgBase !== null && cfgEl.value !== cfgBase) || Object.keys(pending).length) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ---------------------------------------------------------------- Tune: sliders for the rules in config.yaml
+// Each control edits one value. Unsaved changes are previewed on the right (numbers for the whole film and
+// the first cuts from the preview start, drawn for real); Save writes just those values into config.yaml.
+const R = (p, label, min, max, step, hint, more = {}) => ({p, label, kind: 'range', min, max, step, hint, ...more});
+const TUNE = [
+  {group: 'Cuts and timing', note: 'when it cuts, how long a shot lasts, when it goes black', items: [
+    R('analysis.onset_delta', 'onset sensitivity', 0.01, 0.3, 0.005, 'Lower finds more onsets, so more cuts. Changing it re-analyses the track (a second or two).'),
+    R('analysis.onset_wait_ms', 'min gap (ms)', 0, 250, 5, 'Two onsets closer than this count as one.'),
+    R('editing.hold.min_frames', 'hold, soft hit (f)', 1, 12, 1, 'Frames at full brightness after the weakest hits.'),
+    R('editing.hold.max_frames', 'hold, hard hit (f)', 1, 24, 1, 'Frames at full brightness after the strongest hits.'),
+    R('editing.between_onsets.hold_if_gap_at_most', 'keep up if next ≤ (f)', 0, 24, 1, 'If the next hit is this close, the shot simply stays up until it.'),
+    R('editing.between_onsets.decay', 'fade per frame', 0.05, 0.95, 0.05, 'Share of brightness kept each frame after the hold. Higher = longer fades, less black.'),
+    R('editing.between_onsets.black_below', 'black below', 0.01, 0.5, 0.01, 'A fading shot cuts to black once it is this dim.'),
+    R('editing.silence.threshold_db', 'silence below (dB)', -90, -10, 1, 'Quieter than this (relative to the loudest moment) is pure black.'),
+    R('editing.flash.strength_above', 'invert flash ≥', 0.5, 1, 0.01, 'Hits at least this strong flash black-on-white for one frame.', {toggle: 'editing.flash.enabled'}),
+    R('editing.no_repeat_within', 'no repeat within', 0, 60, 1, 'A photo can only come back after this many other cuts.'),
+    {p: 'seed', label: 'seed', kind: 'int', hint: 'Fixes every random choice. Another number gives another edit from the same rules.'},
+  ]},
+  {group: 'Photo pools', note: 'spectral centroid at the hit: high → bright, low → dark', items: [
+    R('editing.pools.bright_above', 'bright above', 0, 1, 0.01, 'Hits brighter-sounding than this take a photo from images/bright.'),
+    R('editing.pools.dark_below', 'dark below', 0, 1, 0.01, 'Hits lower-sounding than this take a photo from images/dark. In between: texture.'),
+    R('editing.pools.centroid_window', 'listen over (f)', 1, 8, 1, 'Frames of sound from the hit on that decide the pool.'),
+  ]},
+  {group: 'Resolution', note: 'loudness → characters across the frame', items: [
+    R('ascii.resolution.cols_quiet', 'columns, quiet', 2, 300, 1, 'Characters across the frame when it is quiet (fewer = bigger characters).'),
+    R('ascii.resolution.cols_loud', 'columns, loud', 2, 300, 1, 'Characters across the frame at the loudest.'),
+    R('ascii.resolution.curve', 'curve', 0.3, 3, 0.05, 'Above 1: stays coarse until it gets loud. Below 1: gets fine early.'),
+    R('ascii.resolution.smooth_frames', 'smoothing (f)', 0, 12, 0.5, 'How much the grid size is smoothed over time.'),
+    R('ascii.resolution.max_step', 'max change / frame', 1, 200, 1, 'Largest jump in columns from one frame to the next.'),
+  ]},
+  {group: 'Characters', note: 'centroid → glyph set; the first band whose threshold the sound reaches wins', bands: true, items: [
+    {p: 'ascii.charset.switch_on', label: 'change set', kind: 'select', options: ['frame', 'cut'], hint: 'frame: follows the sound every frame. cut: one set per shot.'},
+    R('ascii.charset.smooth_frames', 'smoothing (f)', 0, 12, 0.5, 'How much the centroid is smoothed before picking a set.'),
+  ]},
+  {group: 'Colour', note: 'flatness: noisy → mono, pitched → photo colour', items: [
+    R('ascii.color.noisy_mix', 'colour when noisy', 0, 1, 0.01, '0 = monochrome tint for hiss and noise.'),
+    R('ascii.color.tonal_mix', 'colour when pitched', 0, 1, 0.01, '1 = the photo’s own colours for tones.'),
+    R('ascii.color.curve', 'curve', 0.3, 3, 0.05, 'Above 1: needs a purer tone before colour comes in. Below 1: colour comes in sooner.'),
+    R('ascii.color.saturation', 'saturation', 0, 3, 0.05, 'Pushes the photos’ own colours: 1 = as shot, 2 = twice as vivid, 0 = grey.'),
+    {p: 'ascii.tint', label: 'mono tint', kind: 'color', hint: 'The character colour in monochrome.'},
+    {p: 'ascii.background', label: 'background', kind: 'color', hint: 'The colour behind the characters.'},
+    R('ascii.contrast', 'contrast', 0.5, 2.5, 0.05, 'Spreads the photo’s tones across the character set.'),
+  ]},
+  {group: 'Brightness', note: 'loudness → exposure; quiet dims, loud blows out', items: [
+    {p: 'ascii.auto_level', label: 'auto-level photos', kind: 'bool', hint: 'Stretch every photo to full black-to-white first, so dim shots still show.'},
+    R('ascii.black_point', 'black point', 0, 0.6, 0.01, 'Tones below this become empty space.'),
+    R('treatments.exposure.intensity', 'exposure', 0, 1, 0.01, 'How strongly loudness brightens and quietness dims.', {toggle: 'treatments.exposure.enabled'}),
+    R('treatments.exposure.cut_floor', 'cut floor', 0, 1, 0.01, 'Cuts are never exposed below this (0.5 = neutral), so quiet hits still show.'),
+  ]},
+  {group: 'Treatments', note: 'per cut and per frame', items: [
+    R('treatments.crop_zoom.intensity', 'crop / zoom', 0, 1, 0.01, 'Each cut shows a random part of the photo, zoomed up to 1 + 2× this.', {toggle: 'treatments.crop_zoom.enabled'}),
+    {p: 'treatments.crop_zoom.respect_hand_crops', label: 'keep my crops exact', kind: 'bool', hint: 'Photos you cropped in the sorter are shown exactly as framed. Off: the random crop/zoom also moves around inside your crop.'},
+    R('treatments.color_shift.intensity', 'hue shift', 0, 1, 0.01, 'Each cut’s colours rotate by up to this × 180°.', {toggle: 'treatments.color_shift.enabled'}),
+    R('treatments.layering.intensity', 'layering', 0, 1, 0.01, 'In dense passages a second photo is blended in this strongly.', {toggle: 'treatments.layering.enabled'}),
+    R('treatments.layering.onsets_per_sec', 'layer when ≥ hits/s', 1, 20, 0.5, 'How dense a passage must be before photos layer.'),
+    {p: 'treatments.layering.blend', label: 'layer blend', kind: 'select', options: ['screen', 'average']},
+    R('treatments.char_jitter.intensity', 'character jitter', 0, 1, 0.01, 'Share of characters swapped at random each frame (scaled by the feature below).', {toggle: 'treatments.char_jitter.enabled'}),
+    {p: 'treatments.char_jitter.follow', label: 'jitter follows', kind: 'select', options: ['none', 'rms', 'flatness', 'centroid']},
+    R('treatments.frame_jitter.intensity', 'gate weave', 0, 1, 0.01, 'The whole frame shifts a little at random each frame.', {toggle: 'treatments.frame_jitter.enabled'}),
+    R('treatments.grain.intensity', 'grain', 0, 1, 0.01, 'Film grain on the characters.', {toggle: 'treatments.grain.enabled'}),
+  ]},
+];
+const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);
+const same = (a, b) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : a === b;
+const cur = p => (p in pending ? pending[p] : getPath(cfgVals, p));
+const decimals = step => (String(step).split('.')[1] || '').length;
+const isHex = v => /^#[0-9a-f]{6}$/i.test(String(v));
+
+function rowHTML(it) {
+  const v = cur(it.p), d = getPath(cfgDefaults, it.p), tip = esc(it.hint || '');
+  const reset = `<button class="reset" data-reset="${it.p}" title="back to the default (${esc(JSON.stringify(d))})">↺</button>`;
+  let label = `<label title="${tip}">${esc(it.label)}</label>`;
+  if (it.toggle) label = `<label class="chk" title="${tip}"><input type="checkbox" data-p="${it.toggle}" data-kind="bool" ${cur(it.toggle) ? 'checked' : ''}> ${esc(it.label)}</label>`;
+  let ctl;
+  if (it.kind === 'range') {
+    const off = it.toggle && !cur(it.toggle) ? 'disabled' : '';
+    ctl = `<input type="range" data-p="${it.p}" data-kind="range" min="${it.min}" max="${it.max}" step="${it.step}" value="${v}" ${off}>
+           <input class="in num" type="number" data-p="${it.p}" data-kind="num" step="${it.step}" value="${Number(v).toFixed(decimals(it.step))}" ${off}>`;
+  } else if (it.kind === 'int') {
+    ctl = `<input class="in num wide2" type="number" step="1" data-p="${it.p}" data-kind="int" value="${v}">`;
+  } else if (it.kind === 'bool') {
+    label = `<label class="chk" title="${tip}"><input type="checkbox" data-p="${it.p}" data-kind="bool" ${v ? 'checked' : ''}> ${esc(it.label)}</label>`;
+    ctl = '<span class="wide2"></span>';
+  } else if (it.kind === 'select') {
+    ctl = `<select class="in wide2" data-p="${it.p}" data-kind="select">${it.options.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+  } else if (it.kind === 'color') {
+    ctl = `<span class="colorpair">${isHex(v) ? `<input type="color" data-p="${it.p}" data-kind="color" value="${v}">` : ''}<input class="in" data-p="${it.p}" data-kind="text" value="${esc(v)}"></span>`;
+  } else if (it.kind === 'chars') {
+    ctl = `<input class="in chars" data-p="${it.p}" data-kind="text" value="${esc(v)}" spellcheck="false">`;
+  }
+  return `<div class="trow" data-row="${it.p}">${label}${ctl}${reset}</div>`;
+}
+function bandItems() {
+  const bands = (cfgVals && getPath(cfgVals, 'ascii.charset.bands')) || [];
+  return bands.flatMap((b, i) => [
+    R(`ascii.charset.bands.${i}.above`, `${b.name} from`, 0, 1, 0.01, `Centroid at or above this uses the ${b.name} set (unless a band above it matches first).`),
+    {p: `ascii.charset.bands.${i}.chars`, label: `${b.name} characters`, kind: 'chars', hint: 'Any characters, sparse to dense; they are sorted by ink automatically.'},
+  ]);
+}
+function buildTune() {
+  if (!cfgVals) { setHTML($('#tune'), '<div class="note err">config.yaml has an error; fix it in the editor below.</div>'); return; }
+  setHTML($('#tune'), TUNE.map(g => `<div class="tgroup"><h3>${g.group}</h3><div class="gnote">${esc(g.note)}</div>
+    ${[...g.items, ...(g.bands ? bandItems() : [])].map(rowHTML).join('')}</div>`).join(''));
+  markRows();
+}
+function markRows() {
+  document.querySelectorAll('#tune .trow').forEach(row => {
+    const p = row.dataset.row;
+    const tog = row.querySelector('input[data-kind=bool]');
+    const paths = [p, ...(tog && tog.dataset.p !== p ? [tog.dataset.p] : [])];
+    row.classList.toggle('mod', paths.some(x => x in pending));
+    const d = paths.map(x => getPath(cfgDefaults, x));
+    row.querySelector('.reset').classList.toggle('on', paths.some((x, i) => d[i] !== undefined && !same(cur(x), d[i])));
+  });
+  const n = Object.keys(pending).length;
+  $('#tuneCount').hidden = !n; $('#tuneCount').textContent = `${n} unsaved change${n > 1 ? 's' : ''}`;
+  $('#tuneSave').disabled = $('#tuneDiscard').disabled = $('#tuneSavePreview').disabled = !n;
+}
+function setValue(p, v) {
+  if (same(v, getPath(cfgVals, p))) delete pending[p]; else pending[p] = v;
+  markRows(); simulateSoon();
+}
+$('#tune').addEventListener('input', e => {
+  const el = e.target, p = el.dataset.p, kind = el.dataset.kind;
+  if (!p) return;
+  const row = el.closest('.trow');
+  if (kind === 'range' || kind === 'num' || kind === 'int') {
+    const v = kind === 'int' ? parseInt(el.value, 10) : parseFloat(el.value);
+    if (!Number.isFinite(v)) return;
+    const step = parseFloat(row.querySelector('input[type=range]')?.step || '1');
+    const val = Number.isInteger(step) && kind !== 'int' ? Math.round(v) : (kind === 'int' ? v : +v.toFixed(4));
+    if (kind === 'range') row.querySelector('.num').value = val.toFixed(decimals(step));
+    if (kind === 'num') row.querySelector('input[type=range]').value = val;
+    setValue(p, val);
+  } else if (kind === 'bool') {
+    setValue(p, el.checked);
+    row.querySelectorAll('input[type=range], .num').forEach(x => { if (x.dataset.p !== p) x.disabled = !el.checked; });
+  } else if (kind === 'color') {
+    row.querySelector('[data-kind=text]').value = el.value; setValue(p, el.value);
+  } else if (kind === 'text' || kind === 'select') {
+    if (kind === 'text' && row.querySelector('[data-kind=color]') && isHex(el.value)) row.querySelector('[data-kind=color]').value = el.value;
+    if (el.value !== '') setValue(p, el.value);
+  }
+});
+$('#tune').addEventListener('click', e => {
+  const b = e.target.closest('[data-reset]');
+  if (!b) return;
+  const row = b.closest('.trow');
+  row.querySelectorAll('[data-p]').forEach(el => {
+    const d = getPath(cfgDefaults, el.dataset.p);
+    if (d !== undefined && !same(cur(el.dataset.p), d)) { if (same(d, getPath(cfgVals, el.dataset.p))) delete pending[el.dataset.p]; else pending[el.dataset.p] = d; }
+  });
+  buildTune(); simulateSoon();
+});
+$('#tuneDiscard').onclick = () => { pending = {}; buildTune(); simulateSoon(0); };
+async function saveTune() {
+  try {
+    const r = await api('/api/tune', {changes: pending});
+    pending = {};
+    toast('Saved to config.yaml' + (r.backup ? ' (old version in .work/config-history/)' : ''));
+    await loadConfig(false);
+    refresh();
+    return true;
+  } catch (e) { toast(e.message, 'err'); return false; }
+}
+$('#tuneSave').onclick = saveTune;
+$('#tuneSavePreview').onclick = async () => { const p = previewRange(); if (p && await saveTune()) run('/api/render', renderBody(p)); };
+
+// ---- live: what the unsaved settings do -----------------------------------------------------------------
+let simSeq = 0, simTimer = null, savedStats = null, lookStarted = false;
+function simulateSoon(ms = 350) { clearTimeout(simTimer); simTimer = setTimeout(simulate, ms); }
+$('#pStart').addEventListener('change', () => simulateSoon(0));
+async function simulate() {
+  if (!S || !cfgVals) return;
+  const ready = S.track && S.track.name && ['bright', 'texture', 'dark'].some(k => S.pools && S.pools[k] && S.pools[k].count);
+  if (!ready) { $('#lookEmpty').hidden = false; $('#lookImg').hidden = true; setHTML($('#tstats'), ''); return; }
+  const seq = ++simSeq, t = parseFloat($('#pStart').value) || 0;
+  $('#lookSpin').classList.add('on');
+  try {
+    const r = await api('/api/simulate', {changes: pending, t});
+    if (seq !== simSeq) return;
+    const dirty = Object.keys(pending).length > 0;
+    if (!dirty) savedStats = r.stats;
+    $('#lookImg').hidden = !r.look; $('#lookEmpty').hidden = !!r.look;
+    if (r.look) $('#lookImg').src = r.look;
+    else $('#lookEmpty').textContent = 'No cuts after the preview start.';
+    $('#lookCap').textContent = `first cuts from ${fmtT(t)} (the preview start), ${dirty ? 'with your unsaved changes' : 'as saved'}`;
+    drawStats(r.stats, dirty ? savedStats : null);
+  } catch (e) {
+    if (seq !== simSeq) return;
+    setHTML($('#tstats'), `<div class="note err" style="margin-top:10px">${esc(e.message)}</div>`);
+  } finally {
+    if (seq === simSeq) $('#lookSpin').classList.remove('on');
+  }
+}
+$('#lookBox').onclick = () => { if (!$('#lookImg').hidden) lightbox($('#lookImg').src); };
+const pct = x => `${Math.round(x * 100)}%`;
+function sbar(parts, saved) {
+  const seg = ps => ps.map(([f, c]) => `<i style="width:${(f * 100).toFixed(2)}%;background:${c}"></i>`).join('');
+  return `<div class="sbar">${seg(parts.map(x => [x[1], x[2]]))}</div>` + (saved ? `<div class="sbar saved">${seg(saved.map(x => [x[1], x[2]]))}</div>` : '');
+}
+const legend = parts => `<div class="slegend">${parts.map(([l, f, c]) => `<span style="--c:${c}">${esc(l)} ${pct(f)}</span>`).join('')}</div>`;
+function drawStats(s, was) {
+  const POOLC = {bright: 'var(--bright)', texture: 'var(--texture)', dark: 'var(--dark)'};
+  const pools = st => ['bright', 'texture', 'dark'].map(k => [k, st.pools[k] || 0, POOLC[k]]);
+  const kinds = st => [['cut', st.kinds.cut, '#e7e9e4'], ['hold', st.kinds.hold, '#a9aea6'], ['fade', st.kinds.decay, '#5f665e'],
+                       ['black', st.kinds.black + st.kinds.silence, '#262b26']];
+  const GREYS = ['#e7e9e4', '#b9beb6', '#858b83', '#555b54', '#3a3f3a', '#2a2e2a'];
+  const bands = st => Object.entries(st.bands).map(([k, f], i) => [k, f, GREYS[i % GREYS.length]]);
+  const d = (now, then, f = x => x) => was && then !== undefined && f(now) !== f(then) ? ` <span style="color:var(--faint)">(was ${f(then)})</span>` : '';
+  const black = st => st.kinds.black + st.kinds.silence;
+  setHTML($('#tstats'), `
+    <div class="srow"><div class="sl"><span><b>${s.cuts}</b> cuts${d(s.cuts, was && was.cuts)} · <b>${s.flashes}</b> flashes${d(s.flashes, was && was.flashes)}</span><span>${s.photos} photos used</span></div></div>
+    <div class="srow"><div class="sl"><span>cuts by pool</span></div>${sbar(pools(s), was && pools(was))}${legend(pools(s))}</div>
+    ${s.usage ? `<div class="srow"><div class="sl"><span>repeats: each photo comes back</span><a href="/sort" style="color:var(--faint)">sorter →</a></div>
+      ${['bright', 'texture', 'dark'].map(k => { const u = s.usage[k], w = was && was.usage && was.usage[k];
+        const x = u.per_photo || 0, lvl = x <= 4 ? 'var(--accent)' : x <= 8 ? 'var(--warn)' : 'var(--err)';
+        return `<div class="sl" style="margin:2px 0"><span><span style="color:${POOLC[k]}">●</span> ${k} · ${u.photos} photos · ${u.cuts} cuts</span>
+          <span><b style="color:${lvl}">${u.photos ? x.toFixed(1) + '×' : '—'}</b> each${w && w.per_photo !== u.per_photo && w.per_photo !== null ? ` <span style="color:var(--faint)">(was ${w.per_photo.toFixed(1)}×)</span>` : ''} · most ${u.most}×</span></div>`; }).join('')}</div>` : ''}
+    <div class="srow"><div class="sl"><span>frames</span><span>black ${pct(black(s))}${d(black(s), was && black(was), pct)}</span></div>${sbar(kinds(s), was && kinds(was))}${legend(kinds(s))}</div>
+    <div class="srow"><div class="sl"><span>character sets (visible frames)</span></div>${sbar(bands(s), was && bands(was))}${legend(bands(s))}</div>
+    <div class="srow"><div class="sl"><span>columns</span><span><b>${s.cols.low}–${s.cols.high}</b>, typically ${s.cols.median}${d(s.cols.median, was && was.cols.median)}</span></div></div>
+    <div class="srow"><div class="sl"><span>colour</span><span>mono ${pct(s.colour.mono)} · colour ${pct(s.colour.colour)} · in between ${pct(1 - s.colour.mono - s.colour.colour)}</span></div></div>
+    <div class="srow"><div class="sl"><span>layered</span><span>${pct(s.layered)} of visible frames</span></div></div>
+    ${s.warnings.map(w => `<div class="note warn" style="margin-top:8px">${esc(w)}</div>`).join('')}`);
+}
+
+// ---------------------------------------------------------------- photo panel beside the player
+// Shows the real photo behind the frame on screen, following the video frame by frame (from the render's
+// .edl.csv), with the part the film shows outlined. Black and fading frames dim the last photo.
+const pstore = {get: k => { try { return localStorage.getItem('soundfilm.' + k); } catch { return null; } },
+                set: (k, v) => { try { localStorage.setItem('soundfilm.' + k, v); } catch {} }};
+let photoOpen = pstore.get('photoPanel') === '1', edl = null, edlFor = null, lastIdx = -1, lastPhoto = null;
+function setPhotoOpen(open) {
+  photoOpen = open; pstore.set('photoPanel', open ? '1' : '0');
+  $('#ppane').hidden = !open; $('#stagewrap').classList.toggle('withphoto', open);
+  $('#btnPhoto').textContent = open ? 'Hide photo' : 'Show photo';
+  if (open && selVideo) { edlFor = null; loadEdl(selVideo); }
+}
+$('#btnPhoto').onclick = () => setPhotoOpen(!photoOpen);
+async function loadEdl(name) {
+  if (edlFor === name) return;
+  edlFor = name; edl = null; lastIdx = -1; lastPhoto = null;
+  try { edl = await api('/api/edl?video=' + encodeURIComponent(name)); } catch (e) { edl = null; $('#pnote').textContent = e.message; }
+  showFrame(true);
+}
+const photoFile = n => n.split('/').pop();
+const photoURL = (n, rot = 0) => `/thumb/any/${encodeURIComponent(photoFile(n))}?h=720${rot ? '&rot=' + rot : ''}`;
+// the EDL's view column: "x y w h", "x y w h rot" or "- - - - rot" (rot = degrees clockwise)
+const viewRot = v => { const a = (v || '').split(' '); return a.length >= 5 ? +a[4] : 0; };
+const viewRect = v => { const a = (v || '').split(' '); return a[0] && a[0] !== '-' ? a.slice(0, 4).join(' ') : ''; };
+function showFrame(force = false) {
+  if (!photoOpen || !edl) return;
+  const v = $('#video'), n = edl.name.length;
+  const i = Math.max(0, Math.min(n - 1, Math.floor(v.currentTime * edl.fps + 1e-3)));
+  if (i === lastIdx && !force) return;
+  lastIdx = i;
+  const name = edl.name[i], kind = edl.kind[i], img = $('#pimg');
+  if (name) {
+    const rot = viewRot(edl.view && edl.view[i]);
+    if (lastPhoto !== name + '|' + rot) {
+      lastPhoto = name + '|' + rot;
+      img.onload = () => edl && placePhoto(edl.crop[lastIdx], viewRect(edl.view && edl.view[lastIdx]));
+      img.onerror = () => { $('#pnote').hidden = false; $('#pnote').textContent = `${photoFile(name)} isn't in images/ any more`; };
+      img.src = photoURL(name, rot);
+    }
+    img.classList.remove('dim'); $('#pnote').hidden = true;
+    placePhoto(edl.crop[i], viewRect(edl.view && edl.view[i]));
+    for (let k = i + 1, seen = 0; k < n && seen < 3; k++)                       // fetch the next photos early
+      if (edl.name[k] && edl.name[k] !== name && edl.kind[k] === 'cut') { new Image().src = photoURL(edl.name[k], viewRot(edl.view && edl.view[k])); seen++; }
+  } else {
+    img.classList.add('dim'); $('#pcrop').hidden = true;
+    if (!lastPhoto) { $('#pnote').hidden = false; $('#pnote').textContent = kind === 'silence' ? 'silence (black)' : 'black'; }
+  }
+  const t = (edl.first_frame + i) / edl.fps;
+  const label = {cut: 'CUT', hold: 'hold', decay: 'fading', black: 'black', silence: 'silence'}[kind] || kind;
+  setHTML($('#pcap'), `<span class="k">${label}${edl.flash[i] ? ' FLASH' : ''}</span> ${fmtT(t)} · frame ${edl.first_frame + i}` +
+    (name ? `<br><b>${esc(name)}</b>${viewRot(edl.view && edl.view[i]) ? ` <span style="color:var(--accent)">↻${viewRot(edl.view[i])}°</span>` : ''}${viewRect(edl.view && edl.view[i]) ? ' <span style="color:var(--accent)">✂</span>' : ''}${edl.layer[i] ? ` + ${esc(photoFile(edl.layer[i]))}` : ''}` +
+            (edl.crop[i] ? '' : ' <span style="color:var(--faint)">(crop not recorded in this render)</span>') : ''));
+}
+function placePhoto(crop, view) {
+  // fit the photo in the box, then outline what the film shows: your hand crop (or the centre 16:9),
+  // then the cut's random crop/zoom inside it
+  const img = $('#pimg'), box = $('#pbox'), w = img.naturalWidth, h = img.naturalHeight;
+  if (!w || !h) return;
+  const s = Math.min(box.clientWidth / w, box.clientHeight / h), dw = w * s, dh = h * s;
+  const ox = (box.clientWidth - dw) / 2, oy = (box.clientHeight - dh) / 2;
+  Object.assign(img.style, {left: ox + 'px', top: oy + 'px', width: dw + 'px', height: dh + 'px'});
+  let vx = 0, vy = 0, vw = w, vh = h;
+  if (view) { const [x, y, ww, hh] = view.split(' ').map(Number); vx = x * w; vy = y * h; vw = ww * w; vh = hh * h; }
+  if (vw / vh > 16 / 9 + 1e-3) { const n = vh * 16 / 9; vx += (vw - n) / 2; vw = n; }
+  else if (vw / vh < 16 / 9 - 1e-3) { const n = vw * 9 / 16; vy += (vh - n) / 2; vh = n; }
+  const [cx, cy, z] = crop ? crop.split(' ').map(Number) : [0.5, 0.5, 1];
+  const cw = vw / z, ch = vh / z;
+  const x0 = vx + Math.min(Math.max(cx * vw - cw / 2, 0), vw - cw), y0 = vy + Math.min(Math.max(cy * vh - ch / 2, 0), vh - ch);
+  Object.assign($('#pcrop').style, {left: ox + x0 * s + 'px', top: oy + y0 * s + 'px', width: cw * s + 'px', height: ch * s + 'px'});
+  $('#pcrop').hidden = img.classList.contains('dim');
+}
+(function follow() {                                       // frame-accurate where the browser can, else every paint
+  const v = $('#video');
+  const tick = () => { showFrame(); if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(tick); };
+  if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(tick);
+  else (function raf() { showFrame(); requestAnimationFrame(raf); })();
+  for (const ev of ['seeked', 'timeupdate', 'loadeddata']) v.addEventListener(ev, () => showFrame());
+  new ResizeObserver(() => { if (photoOpen && edl) placePhoto(edl.crop[lastIdx], viewRect(edl.view && edl.view[lastIdx])); }).observe($('#pbox'));
+})();
+setPhotoOpen(photoOpen);
+
+refresh();
+</script>
+</body>
+</html>

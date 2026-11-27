@@ -32,9 +32,10 @@ import numpy as np
 import ascii_film as af
 import dashboard as ascii_dashboard          # the ./ascii dashboard: reuse its HTTP plumbing (video range requests)
 
-from . import analysis, background, config, photos, plot, render, score, sets, verify
+from . import analysis, background, clips, config, photos, plot, render, score, sets, verify
 
 WEB = Path(__file__).resolve().parent / "web"
+POOL_EXTS = af.IMAGE_EXTS | af.VIDEO_EXTS      # what a pool (or the inbox) takes: photos and clips
 ROOT = Path(".")                              # set by serve()
 CONFIG_ARG: str | None = None
 
@@ -194,15 +195,17 @@ def _pool_files(cfg, pool: str) -> list[Path]:
     if not d.is_dir():
         return []
     return sorted(p for p in d.iterdir()
-                  if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in af.IMAGE_EXTS)
+                  if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in POOL_EXTS)
 
 
 def _pools(cfg) -> dict:
     out = {}
     for pool in score.POOLS:
         files = _pool_files(cfg, pool)
-        out[pool] = {"count": len(files), "folder": f"{cfg['paths']['images']}/{pool}",
-                     "files": [{"name": p.name, "thumb": f"/thumb/{pool}/{quote(p.name)}?v={_mtime(p) // 1_000_000}"}
+        out[pool] = {"count": len(files), "clips": sum(clips.is_clip(p) for p in files),
+                     "clips_on": bool(cfg["clips"]["enabled"]), "folder": f"{cfg['paths']['images']}/{pool}",
+                     "files": [{"name": p.name, "clip": clips.is_clip(p),
+                                "thumb": f"/thumb/{pool}/{quote(p.name)}?v={_mtime(p) // 1_000_000}"}
                                for p in files]}
     return out
 
@@ -278,8 +281,8 @@ def _renders(cfg) -> list[dict]:
         if mp.exists():
             try:
                 m = json.loads(mp.read_text())
-                e["meta"] = {k: m.get(k) for k in ("seed", "frames", "fps", "preview", "debug", "cuts", "width",
-                                                   "height", "seconds", "fps_rendered")}
+                e["meta"] = {k: m.get(k) for k in ("seed", "frames", "fps", "first_frame", "preview", "debug", "cuts",
+                                                   "width", "height", "seconds", "fps_rendered")}
             except (json.JSONDecodeError, OSError):
                 pass
         e["verify"] = _verify_info(v)
@@ -323,14 +326,15 @@ def find_photo(cfg: dict, where: str, name: str) -> Path:
         if w not in photos.FOLDERS:
             break
         p = ROOT / cfg["paths"]["images"] / w / name
-        if p.is_file() and p.suffix.lower() in af.IMAGE_EXTS and not name.startswith("."):
+        if p.is_file() and p.suffix.lower() in POOL_EXTS and not name.startswith("."):
             return p
     raise FileNotFoundError(f"{where}/{name}")
 
 
 def thumb(where: str, name: str, h: int = 120, crop: str = "", rot: float = 0.0) -> bytes:
-    """A small JPEG of an input photo. crop='film': only the part the film shows (your rotation and crop, or
-    the centre 16:9). rot: the whole photo turned clockwise (for the crop editor and the photo panel)."""
+    """A small JPEG of an input photo, or of a still from the middle of a clip. crop='film': only the part the
+    film shows (your rotation and crop, or the centre 16:9). rot: the whole photo turned clockwise (for the
+    crop editor and the photo panel)."""
     from .frames import apply_view, rotate
     cfg, _, _ = load_cfg()
     src = find_photo(cfg, where, name)
@@ -342,7 +346,7 @@ def thumb(where: str, name: str, h: int = 120, crop: str = "", rot: float = 0.0)
             _THUMBS.move_to_end(key)
             return _THUMBS[key]
     flag = cv2.IMREAD_REDUCED_COLOR_4 if h <= 300 else cv2.IMREAD_COLOR
-    img = cv2.imread(str(af.readable_image(src, ROOT / ".work")), flag)
+    img = cv2.imread(str(clips.still(src, ROOT / ".work")), flag)
     if img is None:
         raise ValueError(f"can't read {where}/{name}")
     if hand:                                              # your rotation and crop, as the renderer uses them
@@ -437,8 +441,8 @@ def plan(cfg: dict, to: str, name: str, old: str | None = None) -> tuple[Path, l
             raise Refused(f"config paths.background wants {rel(dest)}; this is a {ext} file", 415)
         return dest, background.files(ROOT, cfg)
     if to in score.POOLS or to == "inbox":
-        if not name or name.startswith(".") or ext not in af.IMAGE_EXTS:
-            raise Refused(f"{name or 'file'}: not an image this reads ({', '.join(sorted(af.IMAGE_EXTS))})", 415)
+        if not name or name.startswith(".") or ext not in POOL_EXTS:
+            raise Refused(f"{name or 'file'}: not a photo or clip this reads ({', '.join(sorted(POOL_EXTS))})", 415)
         dest = ROOT / cfg["paths"]["images"] / to / name
         replaces = [dest] if dest.exists() else []
         if old:
@@ -556,7 +560,7 @@ def act_choose(req: dict) -> dict:
     elif to == "background":
         what = "a video for the black frames (mov, mp4, m4v)"
     else:
-        what = f"images for {to} (Cmd-click or Cmd-A to pick several)"
+        what = f"photos or clips for {to} (Cmd-click or Cmd-A to pick several)"
     paths = choose_files(f"Choose {what}", multiple=to not in ("audio", "background") and not old)
     if paths is None:
         return {"cancelled": True, "saved": [], "kept": [], "errors": [], "conflicts": []}
@@ -770,6 +774,7 @@ def score_stats(sc) -> dict:
         cols=dict(low=cols[len(cols) // 20], median=cols[len(cols) // 2], high=cols[-1 - len(cols) // 20]),
         colour=dict(mono=sum(r["mix"] < 0.25 for r in vis) / nv, colour=sum(r["mix"] > 0.75 for r in vis) / nv),
         layered=sum(bool(r["layer"]) for r in vis) / nv,
+        clips=sum(r.get("clip", -1) >= 0 for r in vis) / nv,
         background=sum(r.get("bg", -1) >= 0 for r in rows) / n,
         photos=len({r["name"] for r in cuts}), warnings=sc.warnings)
 
@@ -799,6 +804,8 @@ def _look(cfg: dict, sc, t: float, views: dict, n: int = 4, bg: dict | None = No
         _SIM.update(fr_key=key, fr=FrameRenderer(cfg, sc.bands, W, H, af.find_font(), int(cfg["seed"]), views=views,
                                                  background=bg))
     fr = _SIM["fr"]
+    fr.clips = clips.levels_for(ROOT, cfg, {r[k] for r in picks for k, c in (("image", "clip"), ("layer", "layer_clip"))
+                                            if r.get(c, -1) >= 0})
     tiles = []
     for r in picks:
         img = fr.render(r)
@@ -806,7 +813,7 @@ def _look(cfg: dict, sc, t: float, views: dict, n: int = 4, bg: dict | None = No
             lab = f"{r['frame'] / fps:7.2f}s  background video ({r['kind']})  frame {r['bg']}"
         else:
             lab = f"{r['frame'] / fps:7.2f}s  {r['pool']}  {sc.bands[r['band']]['name']}  {r['cols']} cols" + \
-                  ("  FLASH" if r["flash"] else "")
+                  ("  FLASH" if r["flash"] else "") + ("  clip" if r.get("clip", -1) >= 0 else "")
         cv2.rectangle(img, (0, H - 30), (W, H), (0, 0, 0), -1)
         cv2.putText(img, lab, (10, H - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (235, 235, 230), 1, cv2.LINE_AA)
         tiles.append(img)
@@ -865,7 +872,7 @@ def photo_listing() -> dict:
     if out["unscored"] and not JOBS.active("score"):
         JOBS.submit("score", f"score {out['unscored']} photos for suggestions", _score_job)
     out["scoring"] = JOBS.active("score")
-    out["exts"] = sorted(af.IMAGE_EXTS)
+    out["exts"] = sorted(POOL_EXTS)
     return out
 
 
@@ -900,7 +907,7 @@ def act_import(req: dict) -> dict:
         cfg = _fresh_cfg()
         r = photos.import_from_photos(ROOT, cfg, source,
                                       progress=lambda d, t: job.__setitem__("progress", 0.8 * d / max(1, t)))
-        print(f"added {len(r['added'])} photos to the inbox")
+        print(f"added {len(r['added'])} photos and clips to the inbox")
         todo = photos.unscored(ROOT, cfg)
         if todo:
             photos.score_photos(ROOT, todo, progress=lambda d, t: job.__setitem__("progress", 0.8 + 0.2 * d / max(1, t)))
@@ -1042,6 +1049,7 @@ def edl_frames(video: str) -> dict:
             "name": [r["name"] for r in rows], "kind": [r["kind"] for r in rows],
             "crop": [r.get("crop", "") for r in rows], "view": [r.get("view", "") for r in rows],
             "layer": [r.get("layer_name", "") for r in rows],
+            "clip": [int(r["clip"]) if r.get("clip") else -1 for r in rows],
             "flash": [r["flash"] == "1" for r in rows]}
 
 

@@ -84,6 +84,13 @@ def _check(cfg: dict) -> None:
             raise SystemExit(f"config: background.{key} must be {' or '.join(ok)}, not {b[key]!r}")
     if str(b["chars"]).strip() and len(set(str(b["chars"]))) < 2:
         raise SystemExit('config: background.chars needs at least 2 different characters (or "" for the photos\' set)')
+    if not 0 <= float(cfg["editing"]["between_onsets"]["sustain"]) <= 1:
+        raise SystemExit("config: editing.between_onsets.sustain must be between 0 and 1")
+    c = cfg["clips"]
+    if c["clock"] not in ("shots", "film", "random"):
+        raise SystemExit(f"config: clips.clock must be shots, film or random, not {c['clock']!r}")
+    if not 0 <= float(c["speed"]) <= 8:
+        raise SystemExit(f"config: clips.speed must be between 0 and 8, not {c['speed']!r}")
 
 
 def digest(obj) -> str:

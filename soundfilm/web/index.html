@@ -113,8 +113,9 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; pa
 .thumbs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; max-height: 118px; overflow: auto; }
 .thumbs img { height: 36px; border-radius: 3px; display: block; background: #000; cursor: grab; -webkit-user-drag: none; }
 .thumbs img.lifted { opacity: .3; }
+.thumbs img.clip { border-bottom: 3px solid var(--accent); }    /* a video clip: it plays when the film cuts to it */
 .bgthumb { display: block; height: 54px; margin-top: 8px; border-radius: 3px; background: #000; cursor: zoom-in; }
-.drop .sub .off { color: var(--warn); }
+.drop .sub .off, .drop .count .off { color: var(--warn); }
 body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 .dragghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(14px, 12px); }
 .dragghost .pile img { display: block; height: 62px; border-radius: 5px; border: 1.5px solid rgba(255, 255, 255, .75);
@@ -501,10 +502,10 @@ function drawInputs() {
     const d = p[k] || {count: 0, files: [], folder: 'images/' + k};
     html += `<div class="drop" data-to="${k}">
       <div class="dh"><span class="dot" style="background:${POOL_COLOR[k]}"></span><span class="name">${k}</span>
-        <span class="note">${POOL_HINT[k]}</span><span class="grow"></span><span class="count">${d.count}</span>
+        <span class="note">${POOL_HINT[k]}</span><span class="grow"></span><span class="count">${d.count}${d.clips ? ` <span title="${d.clips_on ? 'video clips: they play when the film cuts to them (underlined)' : 'clips are off: Tune → Clips'}"${d.clips_on ? '' : ' class="off"'}>· ${d.clips} clip${d.clips > 1 ? 's' : ''}</span>` : ''}</span>
         <button class="btn sm" data-pick="${k}">Add…</button></div>
-      <div class="sub">${esc(d.folder)}/ · drop photos or folders here · drag a thumbnail to another pool to move it</div>
-      ${d.files.length ? `<div class="thumbs">${d.files.map(f => `<img loading="lazy" draggable="false" src="${f.thumb}" data-ref="${k}/${esc(f.name)}" title="${esc(f.name)}: click to view or replace, drag to another pool to move" alt="">`).join('')}</div>` : ''}
+      <div class="sub">${esc(d.folder)}/ · drop photos, clips or folders here · drag a thumbnail to another pool to move it</div>
+      ${d.files.length ? `<div class="thumbs">${d.files.map(f => `<img loading="lazy" draggable="false" src="${f.thumb}" data-ref="${k}/${esc(f.name)}"${f.clip ? ' class="clip"' : ''} title="${esc(f.name)}${f.clip ? ' (clip: a still from its middle)' : ''}: click to view or replace, drag to another pool to move" alt="">`).join('')}</div>` : ''}
     </div>`;
   }
   setHTML($('#inputs'), html);
@@ -751,7 +752,7 @@ async function upload(to, files) {
     added.push(j.saved); kept.push(...(j.kept || []));
   };
   for (const f of files) { try { await send(f, false); } catch (e) { toast(e.message, 'err'); } }
-  if (skipped.length) toast(`Skipped ${skipped.length} file${skipped.length > 1 ? 's' : ''} that ${to === 'audio' ? "aren't audio" : to === 'background' ? "aren't video" : skipped.length > 1 ? "aren't photos" : "isn't a photo"}`, 'warn');
+  if (skipped.length) toast(`Skipped ${skipped.length} file${skipped.length > 1 ? 's' : ''} that ${to === 'audio' ? "aren't audio" : to === 'background' ? "aren't video" : skipped.length > 1 ? "aren't photos or clips" : "isn't a photo or clip"}`, 'warn');
   if (conflicts.length && await ask(conflictTitle(to, conflicts), conflictText(conflicts))) {
     for (const c of conflicts) { try { await send(c.file, true); } catch (e) { toast(e.message, 'err'); } }
   }
@@ -869,6 +870,7 @@ const TUNE = [
     R('editing.between_onsets.hold_if_gap_at_most', 'keep up if next ≤ (f)', 0, 24, 1, 'If the next hit is this close, the shot simply stays up until it.'),
     R('editing.between_onsets.decay', 'fade per frame', 0.05, 0.95, 0.05, 'Share of brightness kept each frame after the hold. Higher = longer fades, less black.'),
     R('editing.between_onsets.black_below', 'black below', 0.01, 0.5, 0.01, 'A fading shot cuts to black once it is this dim.'),
+    R('editing.between_onsets.sustain', 'follow the sound', 0, 1, 0.05, 'After the hold, a shot never fades below this × how loud the sound still is (relative to the hit), so a sound that rings on keeps its picture. 0 = fade at the rate above whatever you hear.'),
     R('editing.silence.threshold_db', 'silence below (dB)', -90, -10, 1, 'Quieter than this (relative to the loudest moment) is pure black.'),
     R('editing.flash.strength_above', 'invert flash ≥', 0.5, 1, 0.01, 'Hits at least this strong flash black-on-white for one frame.', {toggle: 'editing.flash.enabled'}),
     R('editing.no_repeat_within', 'no repeat within', 0, 60, 1, 'A photo can only come back after this many other cuts.'),
@@ -884,10 +886,10 @@ const TUNE = [
     R('ascii.resolution.cols_loud', 'columns, loud', 2, 300, 1, 'Characters across the frame at the loudest.'),
     R('ascii.resolution.curve', 'curve', 0.3, 3, 0.05, 'Above 1: stays coarse until it gets loud. Below 1: gets fine early.'),
     R('ascii.resolution.smooth_frames', 'smoothing (f)', 0, 12, 0.5, 'How much the grid size is smoothed over time.'),
-    R('ascii.resolution.max_step', 'max change / frame', 1, 200, 1, 'Largest jump in columns from one frame to the next.'),
+    R('ascii.resolution.max_step', 'max change / frame', 1, 200, 1, 'Largest jump in columns from one frame to the next inside a shot. On a cut the grid jumps straight to its new size.'),
   ]},
   {group: 'Characters', note: 'centroid → glyph set; the first band whose threshold the sound reaches wins', bands: true, items: [
-    {p: 'ascii.charset.switch_on', label: 'change set', kind: 'select', options: ['frame', 'cut'], hint: 'frame: follows the sound every frame. cut: one set per shot.'},
+    {p: 'ascii.charset.switch_on', label: 'change set', kind: 'select', options: ['frame', 'cut'], hint: 'frame: follows the sound every frame after the hold (the cut and its hold keep the hit\'s own set). cut: one set per shot.'},
     R('ascii.charset.smooth_frames', 'smoothing (f)', 0, 12, 0.5, 'How much the centroid is smoothed before picking a set.'),
   ]},
   {group: 'Colour', note: 'flatness: noisy → mono, pitched → photo colour', items: [
@@ -916,6 +918,12 @@ const TUNE = [
     {p: 'treatments.char_jitter.follow', label: 'jitter follows', kind: 'select', options: ['none', 'rms', 'flatness', 'centroid']},
     R('treatments.frame_jitter.intensity', 'gate weave', 0, 1, 0.01, 'The whole frame shifts a little at random each frame.', {toggle: 'treatments.frame_jitter.enabled'}),
     R('treatments.grain.intensity', 'grain', 0, 1, 0.01, 'Film grain on the characters.', {toggle: 'treatments.grain.enabled'}),
+  ]},
+  {group: 'Clips', note: 'video clips in the pools: a cut to one plays it', items: [
+    {p: 'clips.enabled', label: 'use clips', kind: 'bool', hint: 'Off: the film leaves the clips in bright/texture/dark out and cuts only to photos.'},
+    {p: 'clips.clock', label: 'timing', kind: 'select', options: ['shots', 'film', 'random'], hint: 'shots: a clip only moves while it is on screen, so each cut to it carries on where the last stopped. film: every clip runs under the whole film; each cut is a window onto it. random: each cut starts somewhere new.'},
+    R('clips.speed', 'speed', 0, 4, 0.05, '1 = real time, 0.5 = half speed, 2 = twice as fast, 0 = a still from the clip.'),
+    R('clips.start', 'skip start (s)', 0, 10, 0.1, 'Seconds left out at the start of every clip (the shake as you press record). A clip loops at its end.'),
   ]},
   {group: 'Background video', note: 'a clip instead of black (add it under Inputs); the last live frame shows it', items: [
     {p: 'background.enabled', label: 'use it', kind: 'bool', hint: 'Off: black, as before. Nothing happens until there is a video in the background box.'},
@@ -1093,6 +1101,7 @@ function drawStats(s, was) {
     <div class="srow"><div class="sl"><span>columns</span><span><b>${s.cols.low}–${s.cols.high}</b>, typically ${s.cols.median}${d(s.cols.median, was && was.cols.median)}</span></div></div>
     <div class="srow"><div class="sl"><span>colour</span><span>mono ${pct(s.colour.mono)} · colour ${pct(s.colour.colour)} · in between ${pct(1 - s.colour.mono - s.colour.colour)}</span></div></div>
     <div class="srow"><div class="sl"><span>layered</span><span>${pct(s.layered)} of visible frames</span></div></div>
+    ${s.clips || (was && was.clips) ? `<div class="srow"><div class="sl"><span>clips</span><span>${pct(s.clips || 0)} of the shots' frames${d(s.clips || 0, was && (was.clips || 0), pct)}</span></div></div>` : ''}
     ${s.background || (was && was.background) ? `<div class="srow"><div class="sl"><span>background video</span><span>${pct(s.background || 0)} of the film${d(s.background || 0, was && (was.background || 0), pct)}</span></div></div>` : ''}
     ${s.warnings.map(w => `<div class="note warn" style="margin-top:8px">${esc(w)}</div>`).join('')}`);
 }
@@ -1121,10 +1130,13 @@ const photoURL = (n, rot = 0) => `/thumb/any/${encodeURIComponent(photoFile(n))}
 // the EDL's view column: "x y w h", "x y w h rot" or "- - - - rot" (rot = degrees clockwise)
 const viewRot = v => { const a = (v || '').split(' '); return a.length >= 5 ? +a[4] : 0; };
 const viewRect = v => { const a = (v || '').split(' '); return a[0] && a[0] !== '-' ? a.slice(0, 4).join(' ') : ''; };
-function showFrame(force = false) {
+function showFrame(force = false, mediaTime = null) {
   if (!photoOpen || !edl) return;
   const v = $('#video'), n = edl.name.length;
-  const i = Math.max(0, Math.min(n - 1, Math.floor(v.currentTime * edl.fps + 1e-3)));
+  // the frame on screen: requestVideoFrameCallback's mediaTime is that frame's own timestamp; currentTime
+  // can be a frame either side of it while playing
+  const t = mediaTime != null ? mediaTime : v.currentTime;
+  const i = Math.max(0, Math.min(n - 1, Math.floor(t * edl.fps + 1e-3)));
   if (i === lastIdx && !force) return;
   lastIdx = i;
   const name = edl.name[i], kind = edl.kind[i], img = $('#pimg');
@@ -1144,10 +1156,10 @@ function showFrame(force = false) {
     img.classList.add('dim'); $('#pcrop').hidden = true;
     if (!lastPhoto) { $('#pnote').hidden = false; $('#pnote').textContent = kind === 'silence' ? 'silence (black)' : 'black'; }
   }
-  const t = (edl.first_frame + i) / edl.fps;
+  const at = (edl.first_frame + i) / edl.fps;
   const label = {cut: 'CUT', hold: 'hold', decay: 'fading', black: 'black', silence: 'silence'}[kind] || kind;
-  setHTML($('#pcap'), `<span class="k">${label}${edl.flash[i] ? ' FLASH' : ''}</span> ${fmtT(t)} · frame ${edl.first_frame + i}` +
-    (name ? `<br><b>${esc(name)}</b>${viewRot(edl.view && edl.view[i]) ? ` <span style="color:var(--accent)">↻${viewRot(edl.view[i])}°</span>` : ''}${viewRect(edl.view && edl.view[i]) ? ' <span style="color:var(--accent)">✂</span>' : ''}${edl.layer[i] ? ` + ${esc(photoFile(edl.layer[i]))}` : ''}` +
+  setHTML($('#pcap'), `<span class="k">${label}${edl.flash[i] ? ' FLASH' : ''}</span> ${fmtT(at)} · frame ${edl.first_frame + i}` +
+    (name ? `<br><b>${esc(name)}</b>${edl.clip && edl.clip[i] >= 0 ? ` <span style="color:var(--accent)" title="a clip: the panel shows a still from its middle">▶ frame ${edl.clip[i]}</span>` : ''}${viewRot(edl.view && edl.view[i]) ? ` <span style="color:var(--accent)">↻${viewRot(edl.view[i])}°</span>` : ''}${viewRect(edl.view && edl.view[i]) ? ' <span style="color:var(--accent)">✂</span>' : ''}${edl.layer[i] ? ` + ${esc(photoFile(edl.layer[i]))}` : ''}` +
             (edl.crop[i] ? '' : ' <span style="color:var(--faint)">(crop not recorded in this render)</span>') : ''));
 }
 function placePhoto(crop, view) {
@@ -1170,7 +1182,7 @@ function placePhoto(crop, view) {
 }
 (function follow() {                                       // frame-accurate where the browser can, else every paint
   const v = $('#video');
-  const tick = () => { showFrame(); if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(tick); };
+  const tick = (now, md) => { showFrame(false, md ? md.mediaTime : null); v.requestVideoFrameCallback(tick); };
   if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(tick);
   else (function raf() { showFrame(); requestAnimationFrame(raf); })();
   for (const ev of ['seeked', 'timeupdate', 'loadeddata']) v.addEventListener(ev, () => showFrame());
@@ -1320,13 +1332,15 @@ function saveSections(ms = 200) {
 function playT() {
   const v = $('#video'), r = ((S && S.renders) || []).find(x => x.name === selVideo);
   if (!r || v.hidden || !v.duration) return null;
-  const p = r.meta && r.meta.preview;
-  return (p ? p[0] : 0) + v.currentTime;
+  return renderStart(r) + v.currentTime;
 }
+// where a render starts in the track: its first frame (a preview from 13.01 s starts on the frame at 13.0 s)
+const renderStart = r => r.meta && r.meta.first_frame != null && r.meta.fps ? r.meta.first_frame / r.meta.fps
+  : (r.meta && r.meta.preview ? r.meta.preview[0] : 0);
 function seekTo(t) {                                       // move the player there if the render covers t
   const v = $('#video'), r = ((S && S.renders) || []).find(x => x.name === selVideo);
   if (!r || !v.duration) return;
-  const p = r.meta && r.meta.preview, t0 = p ? p[0] : 0;
+  const t0 = renderStart(r);
   if (t >= t0 && t - t0 <= v.duration) v.currentTime = t - t0;
 }
 function splitAt(t) {

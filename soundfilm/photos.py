@@ -1,6 +1,6 @@
 """The photo sorter behind the dashboard's /sort page.
 
-Every photo lives in exactly one folder under images/:
+Every photo (or video clip: clips.py; they sort the same way) lives in exactly one folder under images/:
 
   inbox/      not sorted yet (the film doesn't use these)
   bright/     \
@@ -32,6 +32,7 @@ import ascii_film as af
 from . import score, sortimages
 
 FOLDERS = ("inbox",) + score.POOLS + ("rejected",)
+EXTS = af.IMAGE_EXTS | af.VIDEO_EXTS                   # photos and clips
 
 
 def folder(root: Path, cfg: dict, where: str) -> Path:
@@ -44,7 +45,7 @@ def photos_in(d: Path) -> list[Path]:
     if not d.is_dir():
         return []
     return sorted((p for p in d.iterdir()
-                   if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in af.IMAGE_EXTS),
+                   if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in EXTS),
                   key=lambda p: p.name.lower())
 
 
@@ -236,6 +237,7 @@ def listing(root: Path, cfg: dict) -> dict:
             s = have.get(_key(p))
             st = p.stat()
             rows.append(dict(ref=f"{where}/{p.name}", where=where, name=p.name, mtime=st.st_mtime, size=st.st_size,
+                             clip=p.suffix.lower() in af.VIDEO_EXTS,
                              crop=crop_of(root, cfg, p, crops), sets=sets.members_of(groups, p),
                              **({"brightness": s["brightness"], "texture": s["texture"]} if s else {})))
     scored = [r for r in rows if "texture" in r and r["where"] != "rejected"]
@@ -306,14 +308,16 @@ return out''', 120)
 
 
 def import_from_photos(root: Path, cfg: dict, source: dict, progress=None, log=print) -> dict:
-    """Export photos (not videos or screenshots-as-PNG? -> PNGs are kept: you choose) from the Photos app
-    into images/inbox/. A photo imported before is skipped (remembered in .work/photos_imported.json)."""
+    """Export photos and videos from the Photos app into images/inbox/. One imported before is skipped
+    (remembered in .work/photos_imported.json)."""
     found = items(source)
     if not found:
         raise SystemExit("Nothing to import: select photos in the Photos app first." if not source.get("album_id")
                          else "That album is empty.")
-    stills = [(i, f) for i, f in found if Path(f).suffix.lower() in af.IMAGE_EXTS]
-    log(f"{len(found)} items, {len(stills)} photos ({len(found) - len(stills)} videos and other files skipped)")
+    stills = [(i, f) for i, f in found if Path(f).suffix.lower() in EXTS]
+    nclip = sum(Path(f).suffix.lower() in af.VIDEO_EXTS for _, f in stills)
+    log(f"{len(found)} items: {len(stills) - nclip} photos, {nclip} clips"
+        + (f" ({len(found) - len(stills)} other files skipped)" if len(found) > len(stills) else ""))
     seen_file = Path(root) / ".work" / "photos_imported.json"
     try:
         seen = json.loads(seen_file.read_text())
@@ -336,7 +340,7 @@ with timeout of 1800 seconds
     tell application "Photos" to export {{{ids}}} to (POSIX file {_q(str(tmp))})
 end timeout''', 1900)
             for f in sorted(tmp.iterdir()):
-                if f.is_file() and f.suffix.lower() in af.IMAGE_EXTS:
+                if f.is_file() and f.suffix.lower() in EXTS:
                     dest = unique(inbox, f.name)
                     os.rename(f, dest)
                     added.append(dest.name)

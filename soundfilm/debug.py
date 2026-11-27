@@ -72,7 +72,9 @@ class DebugOverlay:
              0.58, POOL_RGB.get(r["pool"], (230, 230, 230)), 1),
             (f"FLAT {r['flatness']:.2f} -> colour mix {r['mix']:.2f}   char jitter {r['cjit']:.2f}",
              0.58, (230, 230, 230), 1),
-            (f"IMG  {r['name'] or '-'}" + (f"  + {r['layer_name']} x{r['layer_alpha']:.2f} (dense "
+            (f"IMG  {r['name'] or '-'}" + (f" frame {r['clip']}" if r.get("clip", -1) >= 0 else "")
+             + (f"  + {r['layer_name']}" + (f" frame {r['layer_clip']}" if r.get("layer_clip", -1) >= 0 else "")
+                + f" x{r['layer_alpha']:.2f} (dense "
                                             f"{r['density']:.0f}/s)" if r["layer_name"] else "")
              + (f"  gain {r['gain']:.2f}" if r["image"] else "")
              + (f"  background video frame {r['bg']} x{r['bg_gain']:.2f}" if r.get("bg", -1) >= 0 else "")

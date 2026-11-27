@@ -47,8 +47,10 @@ def find_photos(sources: list[Path]) -> list[Path]:
 
 
 def film_view(path: Path, cache: Path) -> np.ndarray:
-    """RGB uint8 at VIEW size: the centre 16:9 crop, as the renderer frames it (before auto-level)."""
-    with Image.open(af.readable_image(path, cache)) as im:
+    """RGB uint8 at VIEW size: the centre 16:9 crop, as the renderer frames it (before auto-level). A clip is
+    judged by a still from its middle."""
+    from .clips import still
+    with Image.open(still(path, cache)) as im:
         im.draft("RGB", (VIEW[0] * 4, VIEW[0] * 4))
         arr = np.asarray(ImageOps.exif_transpose(im).convert("RGB"))
     h, w = arr.shape[:2]

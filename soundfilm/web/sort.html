@@ -63,6 +63,7 @@ main { padding: 14px 20px 110px; }
 .card .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .card .sg { color: var(--faint); white-space: nowrap; }
 .card .sg i { font-style: normal; color: var(--c); }
+.card .cl { color: var(--accent); flex: none; }         /* a video clip */
 .card.sel { border-color: var(--accent); }
 .card.sel::after { content: "✓"; position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
   color: var(--accent-ink); font: 700 12px/20px var(--sans); text-align: center; }
@@ -346,7 +347,7 @@ function draw() {
       ${p.sets.length ? `<span class="sdots" title="sets: ${esc(p.sets.join(', '))}">${p.sets.map(n => `<i style="background:${setColor(n)}"></i>`).join('')}</span>` : ''}
       ${p.crop ? `<span class="cut" title="framed by hand">${p.crop.rot ? '↻' : ''}${'w' in p.crop ? '✂' : ''}</span>` : ''}
       ${U && !U.error && inPool(p) ? (usesOf(p) ? `<span class="uses" style="--lvl:${level(usesOf(p))}" title="cuts to this photo in the film">×${usesOf(p)}</span>` : '<span class="uses none" title="not in the film with these settings">unused</span>') : ''}
-      <div class="meta"><span class="dot"></span><span class="nm" title="${esc(p.name)}">${esc(p.name)}</span>
+      <div class="meta"><span class="dot"></span>${p.clip ? '<span class="cl" title="a video clip: it plays when the film cuts to it (the picture is a still from its middle)">▶</span>' : ''}<span class="nm" title="${esc(p.name)}">${esc(p.name)}</span>
         ${p.suggest ? `<span class="sg" title="the automatic suggestion">→ <i style="--c:${COLOR[p.suggest]}">${p.suggest}</i></span>` : ''}</div></div>`).join('');
   }
   document.querySelectorAll('#grid .card').forEach((el, i) => {
@@ -807,7 +808,7 @@ async function addFiles(to, files) {
   const exts = new Set(L ? L.exts : []);
   const pics = files.filter(f => exts.has(SF.extOf(f.name))), others = files.length - pics.length;
   if (!pics.length) {
-    toast(files.length ? `None of that is a photo this reads (${[...exts].join(' ')})`
+    toast(files.length ? `None of that is a photo or clip this reads (${[...exts].join(' ')})`
       : 'Nothing came through. From the Photos app, drag the photos to the Desktop first, or use Import Photos selection.', 'err');
     return;
   }

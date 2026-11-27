@@ -4,6 +4,8 @@
         -> glyph indices (ascii_film.cell_glyphs) -> character jitter
         -> glyphs (ascii_film.draw_glyphs) -> grain -> gate weave -> (debug overlay)
 
+A clip in the pools (clips.py) is drawn like a photo, one of its frames per film frame: the score says which.
+
 A frame with no photo is black, or the background video's frame (background.py) if the score gave it one:
   video frame -> centre crop -> cells -> black point -> x level -> glyphs (or the picture itself, dimmed)
         -> grain -> gate weave
@@ -22,6 +24,7 @@ from PIL import Image, ImageOps
 
 import ascii_film as af
 
+from . import clips as clipsmod
 from .background import Reader
 
 
@@ -92,11 +95,31 @@ def apply_view(arr: np.ndarray, v: dict | None) -> np.ndarray:
     return arr
 
 
+def fit(arr: np.ndarray, aspect: float, work_w: int) -> np.ndarray:
+    """Cover-crop to the frame's shape (the centre), then INTER_AREA down to at most work_w pixels across."""
+    h, w = arr.shape[:2]
+    if w / h > aspect:
+        cw = int(round(h * aspect))
+        arr = arr[:, (w - cw) // 2:(w - cw) // 2 + cw]
+    else:
+        ch = int(round(w / aspect))
+        arr = arr[(h - ch) // 2:(h - ch) // 2 + ch]
+    ww = min(work_w, arr.shape[1])
+    return cv2.resize(arr, (ww, max(2, int(round(ww / aspect)))), interpolation=cv2.INTER_AREA)
+
+
+def work_width(cfg: dict) -> int:
+    """Photos and clips are kept this wide: enough for the finest grid at the deepest zoom."""
+    tr = cfg["treatments"]
+    zmax = 1 + 2 * tr["crop_zoom"]["intensity"] if tr["crop_zoom"]["enabled"] else 1
+    return int(np.clip(cfg["ascii"]["resolution"]["cols_loud"] * zmax * 1.5, 480, 1920))
+
+
 class FrameRenderer:
     """Turns score rows into (H, W, 3) RGB uint8 frames."""
 
     def __init__(self, cfg: dict, bands: list[dict], W: int, H: int, font_path: str, seed: int, overlay=None,
-                 views: dict | None = None, background: dict | None = None):
+                 views: dict | None = None, background: dict | None = None, clips: dict | None = None):
         self.cfg, self.W, self.H, self.font, self.seed, self.overlay = cfg, W, H, font_path, seed, overlay
         self.views = views or {}                     # {photo path: hand crop {x, y, w, h}} (images/crops.json)
         a, cs = cfg["ascii"], cfg["ascii"]["charset"]
@@ -114,10 +137,10 @@ class FrameRenderer:
         tr = cfg["treatments"]
         self.include_blank = bool(tr["char_jitter"].get("include_blank", False))
         self.blend = tr["layering"].get("blend", "screen")
-        # source images are kept at a "work" size: enough for the finest grid at the deepest zoom
-        zmax = 1 + 2 * tr["crop_zoom"]["intensity"] if tr["crop_zoom"]["enabled"] else 1
-        self.work_w = int(np.clip(a["resolution"]["cols_loud"] * zmax * 1.5, 480, 1920))
+        self.work_w = work_width(cfg)                # source images are kept at this "work" size
         self._images: OrderedDict = OrderedDict()
+        self.clips = clips or {}                     # {clip: {levels, file, index}} (clips.py; render decodes them first)
+        self._clip_files: dict = {}
         self._grain = None
 
     # ---- sources -------------------------------------------------------------------------------------
@@ -129,17 +152,7 @@ class FrameRenderer:
         with Image.open(path) as im:
             im.draft("RGB", (self.work_w * 2, self.work_w * 2))    # JPEG: decode big scans at reduced size
             arr = np.asarray(ImageOps.exif_transpose(im).convert("RGB"))
-        arr = apply_view(arr, self.views.get(path))  # your rotation and crop, if you made them
-        h, w = arr.shape[:2]
-        target = self.W / self.H                     # cover-crop to the frame's shape
-        if w / h > target:
-            cw = int(round(h * target))
-            arr = arr[:, (w - cw) // 2:(w - cw) // 2 + cw]
-        else:
-            ch = int(round(w / target))
-            arr = arr[(h - ch) // 2:(h - ch) // 2 + ch]
-        ww = min(self.work_w, arr.shape[1])
-        img = cv2.resize(arr, (ww, max(2, int(round(ww / target)))), interpolation=cv2.INTER_AREA)
+        img = fit(apply_view(arr, self.views.get(path)), self.W / self.H, self.work_w)   # your rotation and crop
         if self.auto_level:                          # stretch luminance 0.5-99.5 % to full range, keep hue
             lum = img.astype(np.float32) @ af.LUMA * 255
             lo, hi = np.percentile(lum, [0.5, 99.5])
@@ -150,9 +163,22 @@ class FrameRenderer:
             self._images.popitem(last=False)
         return img
 
-    def cells(self, path: str, crop, cols: int, rows: int) -> np.ndarray:
-        """The (cropped) image averaged down to one colour per character cell, float32 0-1."""
-        img = self.image(path)
+    def clip_image(self, path: str, i: int) -> np.ndarray:
+        """Frame i of a clip at work size: from the frames the render decoded first, or decoded now."""
+        m = self.clips.get(path) or {}
+        k = m.get("index", {}).get(i)
+        if k is not None:
+            arr = self._clip_files.get(path)
+            if arr is None:
+                arr = self._clip_files[path] = np.load(m["file"], mmap_mode="r")
+            return arr[k]
+        return clipsmod.frame_now(path, i, self.views.get(path), self.W / self.H, self.work_w, m.get("levels"),
+                                  self.cfg["video"]["fps"])
+
+    def cells(self, path: str, crop, cols: int, rows: int, clip: int = -1) -> np.ndarray:
+        """The (cropped) image, or frame `clip` of a clip, averaged down to one colour per character cell,
+        float32 0-1."""
+        img = self.clip_image(path, max(0, clip)) if clip >= 0 or clipsmod.is_clip(path) else self.image(path)
         h, w = img.shape[:2]
         cx, cy, z = crop or (0.5, 0.5, 1.0)
         cw, ch = max(2, int(round(w / z))), max(2, int(round(h / z)))
@@ -243,6 +269,7 @@ class FrameRenderer:
         if self._reader is not None:
             self._reader.close()
             self._reader = None
+        self._clip_files.clear()
 
     # ---- the frame -----------------------------------------------------------------------------------
     def render(self, row: dict) -> np.ndarray:
@@ -255,9 +282,9 @@ class FrameRenderer:
         else:
             rng = np.random.default_rng([self.seed, 22, row["frame"]])
             cols, rows, _, _ = af.grid(W, H, row["cols"])
-            c = self.cells(row["image"], row["crop"], cols, rows)
+            c = self.cells(row["image"], row["crop"], cols, rows, row.get("clip", -1))
             if row["layer"]:
-                c2 = self.cells(row["layer"], row["layer_crop"], cols, rows)
+                c2 = self.cells(row["layer"], row["layer_crop"], cols, rows, row.get("layer_clip", -1))
                 a = row["layer_alpha"]
                 c = 1 - (1 - c) * (1 - a * c2) if self.blend == "screen" else (1 - a) * c + a * c2
             if row["hue"]:

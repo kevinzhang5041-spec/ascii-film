@@ -17,21 +17,30 @@ from scipy.ndimage import gaussian_filter1d
 import ascii_film as af
 
 from . import background as bgvideo
+from . import clips as clipsmod
 
 POOLS = ("bright", "texture", "dark")
 
 
 # --------------------------------------------------------------------------- images
 
+def pool_exts(cfg: dict) -> set[str]:
+    """What the film takes from a pool folder: photos, and video clips unless clips.enabled is false."""
+    return af.IMAGE_EXTS | (af.VIDEO_EXTS if cfg["clips"]["enabled"] else set())
+
+
 def gather_pools(root: Path, cfg: dict, cache_dir: Path) -> dict[str, list[tuple[str, str]]]:
-    """{pool: [(display name, readable path)]}. HEIC/HEIF is converted once to a cached JPEG."""
+    """{pool: [(display name, readable path)]}. HEIC/HEIF is converted once to a cached JPEG; a clip is
+    read as it is (clips.py)."""
     base = root / cfg["paths"]["images"]
+    exts = pool_exts(cfg)
     pools = {}
     for name in POOLS:
         d = base / name
         files = sorted(p for p in d.iterdir() if p.is_file() and not p.name.startswith(".")
-                       and p.suffix.lower() in af.IMAGE_EXTS) if d.is_dir() else []
-        pools[name] = [(f"{name}/{p.name}", str(af.readable_image(p, cache_dir))) for p in files]
+                       and p.suffix.lower() in exts) if d.is_dir() else []
+        pools[name] = [(f"{name}/{p.name}", str(p if clipsmod.is_clip(p) else af.readable_image(p, cache_dir)))
+                       for p in files]
     if not any(pools.values()):
         raise SystemExit(f"No images found in {base}/bright, {base}/dark or {base}/texture")
     return pools
@@ -39,27 +48,45 @@ def gather_pools(root: Path, cfg: dict, cache_dir: Path) -> dict[str, list[tuple
 
 # --------------------------------------------------------------------------- helpers
 
-def smooth(x: np.ndarray, sigma: float) -> np.ndarray:
-    return gaussian_filter1d(x, sigma, mode="nearest") if sigma and sigma > 0 else x
+def stretches(onset_frames, n: int) -> list[tuple[int, int]]:
+    """[start, end) from each onset to the next (and before the first): the curves that follow the sound are
+    smoothed only inside one of these, so no frame reacts to a sound that comes after the next cut."""
+    b = sorted({0, n} | {int(f) for f in onset_frames if 0 < f < n})
+    return list(zip(b[:-1], b[1:]))
 
 
-def wsmooth(x: np.ndarray, weight: np.ndarray, sigma: float) -> np.ndarray:
+def smooth(x: np.ndarray, sigma: float, segs=None) -> np.ndarray:
+    """Gaussian smoothing over time; with `segs` (stretches()), separately inside each stretch."""
+    if not sigma or sigma <= 0:
+        return x
+    if segs is None:
+        return gaussian_filter1d(x, sigma, mode="nearest")
+    out = np.empty(len(x), np.float64)
+    for a, b in segs:
+        out[a:b] = gaussian_filter1d(np.asarray(x[a:b], np.float64), sigma, mode="nearest")
+    return out
+
+
+def wsmooth(x: np.ndarray, weight: np.ndarray, sigma: float, segs=None) -> np.ndarray:
     """Loudness-weighted smoothing: silent frames (whose centroid/flatness mean nothing) don't pull the
     curve around; a hold after a click in silence keeps the click's character."""
     if not sigma or sigma <= 0:
         return x
-    num, den = smooth(x * weight, sigma), smooth(weight, sigma)
+    num, den = smooth(x * weight, sigma, segs), smooth(weight, sigma, segs)
     ok = den > 1e-6 * max(float(weight.max()), 1e-12)
     return np.where(ok, num / np.where(ok, den, 1.0), x)
 
 
-def slew(x: np.ndarray, max_step: float) -> np.ndarray:
-    """Limit how fast a curve may change from one frame to the next."""
+def slew(x: np.ndarray, max_step: float, free=()) -> np.ndarray:
+    """Limit how fast a curve may change from one frame to the next, except on the frames in `free` (the
+    cuts: the picture changes there anyway, so the whole change lands on the hit instead of trailing it)."""
     if not max_step:
         return x
     y = np.array(x, np.float64)
+    free = set(int(f) for f in free)
     for i in range(1, len(y)):
-        y[i] = min(max(y[i], y[i - 1] - max_step), y[i - 1] + max_step)
+        if i not in free:
+            y[i] = min(max(y[i], y[i - 1] - max_step), y[i - 1] + max_step)
     return y
 
 
@@ -133,28 +160,36 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
 
     # ---- per-frame curves straight from the sound ------------------------------------------------
     # Analysis values are centred on each frame's start (k/fps), which is right for onsets. Frame k is on
-    # screen from k/fps to (k+1)/fps, so for what you *hear* during it, look half a frame ahead too.
-    ahead = lambda x: np.r_[x[1:], x[-1:]]
+    # screen from k/fps to (k+1)/fps, so for what you *hear* during it, look half a frame ahead too, but
+    # not past the next onset: that sound belongs to the next cut. For the same reason every smoothing
+    # below stays inside the stretch between two onsets (a centred Gaussian would otherwise let the grid,
+    # the charset and the colour change a few frames *before* the hit that causes the change).
+    segs = stretches(an.onset_frames, n)
+    nxt = np.minimum(np.arange(1, n + 1), n - 1)
+    nxt[[b - 1 for a, b in segs if b < n]] = [b - 1 for a, b in segs if b < n]
+    ahead = lambda x: x[nxt]
     silent = np.maximum(rms_db, ahead(rms_db)) < ed["silence"]["threshold_db"]
     heard = 0.5 * (rms + ahead(rms))
+    heard_amp = 0.5 * (energy + ahead(energy))  # the same, as linear amplitude (between_onsets.sustain)
 
     res = asc["resolution"]
-    level = np.clip(smooth(heard, res["smooth_frames"]), 0, 1) ** res["curve"]
-    cols = np.round(slew(lerp(res["cols_quiet"], res["cols_loud"], level), res["max_step"])).astype(int)
+    level = np.clip(smooth(heard, res["smooth_frames"], segs), 0, 1) ** res["curve"]
+    cols = np.round(slew(lerp(res["cols_quiet"], res["cols_loud"], level), res["max_step"],
+                         free=an.onset_frames)).astype(int)
     cols = np.maximum(cols, 2)
 
     cs = asc["charset"]
     bands = sorted(cs["bands"], key=lambda b: -b["above"])
-    cent_s = wsmooth(cent, energy, cs["smooth_frames"])
+    cent_s = wsmooth(cent, energy, cs["smooth_frames"], segs)
     band_of = lambda c: next((i for i, b in enumerate(bands) if c >= b["above"]), len(bands) - 1)
     band = np.array([band_of(c) for c in cent_s])
 
     col = asc["color"]
-    tonal = (1.0 - np.clip(wsmooth(flat, energy, col["smooth_frames"]), 0, 1)) ** col["curve"]
+    tonal = (1.0 - np.clip(wsmooth(flat, energy, col["smooth_frames"], segs), 0, 1)) ** col["curve"]
     mix = lerp(col["noisy_mix"], col["tonal_mix"], tonal)
 
     ex = tr["exposure"]
-    loudness = smooth(heard, 0.7)
+    loudness = smooth(heard, 0.7, segs)
 
     def expo_of(lvl):
         """Exposure exponent g for 1 - (1 - c)^g: g < 1 darkens, g > 1 pushes toward white (4x range at 1)."""
@@ -183,6 +218,7 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
     picker = _Picker(pools, ed["no_repeat_within"], rng_pick)
 
     hold_cfg, btw, pl, fl = ed["hold"], ed["between_onsets"], ed["pools"], ed["flash"]
+    sustain = float(np.clip(btw.get("sustain", 0.0), 0, 1))
     onset_at = {int(f): float(s) for f, s in zip(an.onset_frames, an.strength)}
     next_onset = np.full(n, n)
     nxt = n
@@ -241,11 +277,17 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
             shot = dict(id=len(shots), frame=k, pool=pool, wanted=want, name=name, path=path, strength=s,
                         section=sec["index"] if sec else -1,
                         loud=float(max(rms[k:k + 2])),     # the cut and its hold are exposed for the onset itself
+                        amp=float(max(energy[k:k + 2])),   # how loud the hit is (between_onsets.sustain)
                         hold=int(round(lerp(hold_cfg["min_frames"], hold_cfg["max_frames"],
                                             s ** hold_cfg["curve"]))),
                         gap=int(next_onset[k] - k), crop=crop(path=path), hue=round(hue, 2), layer=layer,
-                        flash=bool(fl["enabled"] and s >= fl["strength_above"]), band=int(band[k]),
-                        centroid=round(c, 4))
+                        flash=bool(fl["enabled"] and s >= fl["strength_above"]), centroid=round(c, 4))
+            # the cut and its hold show the hit as one picture, in the character set of the whole hit (attack
+            # and body, loudness-weighted): following it frame by frame, a bright attack and a darker body
+            # would switch to a denser set a frame after the cut, so the burst of ink would trail the sound
+            hw = slice(k, min(k + max(1, shot["hold"]), int(next_onset[k])))
+            shot["band"] = int(band_of(float(np.average(cent_s[hw], weights=energy[hw]))
+                                       if energy[hw].sum() > 0 else float(cent_s[k])))
             shots.append(shot)
             since, vis, kind = 0, 1.0, "cut"
             reason = f"onset s={s:.2f} -> hold {shot['hold']}f, gap {shot['gap']}f"
@@ -265,9 +307,14 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
                 kind, reason = "hold", f"next onset in {shot['gap'] - since}f (gap {shot['gap']} <= "\
                                        f"{btw['hold_if_gap_at_most']})"
             else:
-                vis *= btw["decay"]
+                # fade by `decay`, but never below what the sound still is: a sound that rings on keeps
+                # its picture (sustain 1: as bright as the sound is now, relative to the hit; 0: just fade)
+                ring = sustain * min(1.0, float(heard_amp[k]) / max(shot["amp"], 1e-9))
+                vis = max(vis * btw["decay"], ring)
                 if vis < btw["black_below"]:
                     shot, kind, reason = None, "black", "decayed to black"
+                elif ring >= vis:
+                    kind, reason = "decay", f"the sound rings on -> {vis:.2f}"
                 else:
                     kind, reason = "decay", f"decay x{btw['decay']} -> {vis:.2f}"
 
@@ -292,7 +339,7 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
             hold=shot["hold"] if live else 0, since=since if live else 0,
             gain=round(vis, 4) if live else 0.0,
             cols=int(cols[k]),
-            band=int(shot["band"] if live and cs["switch_on"] == "cut" else band[k]),
+            band=int(shot["band"] if live and (cs["switch_on"] == "cut" or since < shot["hold"]) else band[k]),
             mix=round(float(mix[k]), 3), expo=round(float(expo_of(lvl)), 4), cjit=round(float(cjit[k]), 4),
             jx=round(float(jit[k, 0]), 5), jy=round(float(jit[k, 1]), 5),
             grain=float(tr["grain"]["intensity"]) if on("grain") else 0.0,
@@ -301,6 +348,7 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
             flatness=round(float(flat[k]), 3), density=round(float(density[k]), 2),
         ))
 
+    clipsmod.assign(rows, cfg, clipsmod.lengths(pools, fps), seed)   # which frame of a clip each frame shows
     bgvideo.assign(rows, cfg, background)       # after the edit: it changes no cut, only what the black shows
 
     warnings = [f"images/{p}/ has too few images for no_repeat_within={ed['no_repeat_within']}: "
@@ -319,9 +367,8 @@ def build_score(an, cfg: dict, pools: dict, seed: int, views: dict | None = None
     return Score(rows, shots, bands, warnings, secs)
 
 
-EDL_COLUMNS = ["frame", "time", "section", "kind", "onset", "strength", "shot", "pool", "name", "view", "crop",
-               "layer_name",
-               "layer_alpha",
+EDL_COLUMNS = ["frame", "time", "section", "kind", "onset", "strength", "shot", "pool", "name", "clip", "view",
+               "crop", "layer_name", "layer_clip", "layer_alpha",
                "flash", "hold", "gain", "background", "cols", "band", "mix", "expo", "cjit", "rms", "rms_db", "centroid",
                "centroid_hz", "flatness", "density", "reason"]
 
@@ -341,7 +388,9 @@ def write_edl(rows: list[dict], bands: list[dict], path: Path) -> None:
         for r in rows:
             vals = dict(r, band=bands[r["band"]]["name"], onset=int(r["onset"]), flash=int(r["flash"]),
                         crop=" ".join(f"{x:g}" for x in r["crop"]) if r["crop"] else "",
-                        view=_view_str(r.get("view")), background=r["bg"] if r.get("bg", -1) >= 0 else "")
+                        view=_view_str(r.get("view")), background=r["bg"] if r.get("bg", -1) >= 0 else "",
+                        clip=r["clip"] if r.get("clip", -1) >= 0 else "",
+                        layer_clip=r["layer_clip"] if r.get("layer_clip", -1) >= 0 else "")
             w.writerow([vals[c] for c in EDL_COLUMNS])
 
 

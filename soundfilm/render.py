@@ -17,7 +17,7 @@ import os
 import shutil
 import subprocess
 import time
-from concurrent.futures import FIRST_EXCEPTION, ProcessPoolExecutor, wait
+from concurrent.futures import FIRST_EXCEPTION, ProcessPoolExecutor, ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 
 import cv2
@@ -25,8 +25,8 @@ import numpy as np
 
 import ascii_film as af
 
-from . import analysis, background, config, debug, score
-from .frames import FrameRenderer
+from . import analysis, background, clips, config, debug, score
+from .frames import FrameRenderer, work_width
 
 MIN_SEGMENT_FRAMES = 96
 FP_SIZE = (32, 18)
@@ -47,7 +47,7 @@ def _segment(job: dict) -> np.ndarray:
     W, H = job["W"], job["H"]
     overlay = debug.DebugOverlay(job["timeline"], job["cfg"], W, H, job["fps"]) if job["timeline"] else None
     fr = FrameRenderer(job["cfg"], job["bands"], W, H, job["font"], job["seed"], overlay, job.get("views"),
-                       job.get("background"))
+                       job.get("background"), job.get("clips"))
     counter, cancel = _W.get("counter"), _W.get("cancel")
     enc = af.Encoder(Path(job["out"]), W, H, job["fps"], job["codec"], job["threads"])
     fps_ = np.zeros((len(job["rows"]), FP_SIZE[1], FP_SIZE[0], 3), np.uint8)
@@ -145,12 +145,15 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     tmp = dst.with_name(f".{dst.stem}.partial.mp4")
 
     jobs = max(1, int(jobs or af.default_jobs()))
+    need = clips.needed(rows)                          # clip frames this render shows
+    clip_frames = clips.levels_for(root, cfg, need)
     nseg = max(1, min(jobs, total // MIN_SEGMENT_FRAMES))
     bounds = [round(i * total / nseg) for i in range(nseg + 1)]
     cpu = os.cpu_count() or 4
     base = dict(cfg=cfg, bands=sc.bands, W=W, H=H, fps=fps, font=af.find_font(), seed=seed, codec=codec,
                 threads=max(2, cpu // nseg) if nseg > 1 else 0,
-                timeline=debug.timeline(an, sc) if debug_ else None, views=views, background=bg)
+                timeline=debug.timeline(an, sc) if debug_ else None, views=views, background=bg,
+                clips=clip_frames)
     seg_jobs = [dict(base, rows=rows[bounds[i]:bounds[i + 1]], out=str(work / f"seg{i:03d}.mp4"))
                 for i in range(nseg)]
 
@@ -159,6 +162,20 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     pool = ev = None
     ok = False
     try:
+        if need:                                       # decode each clip once, before drawing (clips.py)
+            t0 = time.time()
+            (work / "clips").mkdir()
+            cjobs = [dict(path=p, idx=idx, view=views.get(p), aspect=W / H, work_w=work_width(cfg), fps=fps,
+                          levels=clip_frames[p]["levels"], out=str(work / "clips" / f"clip{i:03d}.npy"))
+                     for i, (p, idx) in enumerate(sorted(need.items(), key=lambda kv: -len(kv[1])))]
+            with ThreadPoolExecutor(max(1, min(len(cjobs), jobs))) as ex:
+                for f in as_completed([ex.submit(clips.extract, j) for j in cjobs]):
+                    m = f.result()
+                    clip_frames[m["path"]].update(file=m["file"], index=m["index"])
+                    if progress:
+                        progress(0, total)
+            log(f"{len(need)} clip{'s' if len(need) > 1 else ''}: decoded {sum(map(len, need.values()))} frames "
+                f"in {time.time() - t0:.1f} s")
         if nseg == 1:
             _W.clear()
             fp = [_segment(seg_jobs[0])]
@@ -195,7 +212,7 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     secs = time.time() - t_start
     meta = dict(video=dst.name, seed=seed, fps=fps, first_frame=f0, end_frame=f1, frames=total, width=W, height=H,
                 debug=debug_, preview=list(preview) if preview else None, track=str(an.track),
-                background=bg["name"] if bg else None,
+                background=bg["name"] if bg else None, clips=len(need),
                 analysis_sha1=an.data["key"]["sha1"], config=config.digest(cfg), cuts=sum(r["kind"] == "cut"
                                                                                          for r in rows),
                 seconds=round(secs, 2), fps_rendered=round(total / secs, 1))

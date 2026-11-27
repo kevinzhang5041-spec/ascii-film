@@ -52,6 +52,9 @@ editing:
     hold_if_gap_at_most: 3      # next onset this close (in frames): keep the image up until it
     decay: 0.5                  # otherwise, after the hold, brightness is multiplied by this every frame...
     black_below: 0.08           # ...and the frame drops to black leader once it falls below this
+    sustain: 0.5                # but a sound that rings on keeps its picture: after the hold the shot is never
+                                # dimmer than sustain x how loud the sound still is, relative to the hit
+                                # (1: as bright as the sound, 0.5: half that, 0: fade at `decay` whatever you hear)
   silence:
     threshold_db: -45           # RMS below this (dB below the loudest frame) = silence = pure black
     beats_hold: false           # true: silence blacks out even the hold frames right after an onset
@@ -64,6 +67,15 @@ editing:
     strength_above: 0.9
     ink: "#000000"              # black text...
     paper: "#ffffff"            # ...on white
+
+clips:                          # video clips in images/bright, texture and dark: a cut to one plays it
+  enabled: true                 # false: the film leaves the clips out and cuts only to photos
+  clock: shots                  # shots: a clip only moves while it's on screen, so each cut to it carries on where
+                                # the last one stopped | film: every clip runs under the whole film, each cut is a
+                                # window onto it | random: each cut starts somewhere new in the clip
+  speed: 1.0                    # 1 = real time, 0.5 = half speed, 2 = twice as fast, 0 = a still from the clip
+  start: 0.0                    # seconds skipped at the start of every clip (the shake as you press record);
+                                # a clip loops at its end
 
 background:                     # a video instead of the black between and around the shots (paths.background)
   enabled: true                 # nothing changes until there is a video; false: black as before
@@ -85,10 +97,11 @@ ascii:
     cols_loud: 200
     curve: 1.0
     smooth_frames: 3            # Gaussian smoothing (sigma, in frames) so the grid doesn't jitter
-    max_step: 24                # largest change in columns from one frame to the next
+    max_step: 24                # largest change in columns from one frame to the next (on a cut it jumps at once)
   charset:                      # spectral centroid -> glyph ramp
     smooth_frames: 2
-    switch_on: frame            # frame: the ramp follows the sound every frame. cut: one ramp per shot
+    switch_on: frame            # frame: the ramp follows the sound every frame after the hold (the cut and its
+                                # hold keep the hit's own ramp). cut: one ramp per shot
     sort_by_coverage: true      # order each ramp sparse -> dense by measured ink, whatever order you type
     keep_black: true            # make every ramp start with a space, so dark areas stay black
     bands:                      # first band whose `above` the centroid reaches wins (keep them high -> low)

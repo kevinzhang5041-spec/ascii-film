@@ -108,16 +108,17 @@ def verify(video: Path, root: Path, cfg: dict, log=print) -> dict:
     video = Path(video)
     meta = json.loads(sidecar(video, ".json").read_text())
     fps, f0, f1 = meta["fps"], meta["first_frame"], meta["end_frame"]
+    T = int(meta.get("title_frames") or 0)            # the title card's frames, before the film (silent)
     total = f1 - f0
     an = analysis.load_or_analyze(root, cfg, log=log)
-    rep: dict = {"video": str(video), "frames_expected": total}
+    rep: dict = {"video": str(video), "frames_expected": T + total, "title_frames": T}
 
     # ---- container: streams, sizes, durations ---------------------------------------------------------
     pr = ffprobe(video)
     vs = next(s for s in pr["streams"] if s["codec_type"] == "video")
     aus = [s for s in pr["streams"] if s["codec_type"] == "audio"]
     num, den = map(int, vs["r_frame_rate"].split("/"))
-    exp_dur = total / fps
+    exp_dur = (T + total) / fps
     rep["container"] = dict(
         video_codec=vs["codec_name"], size=f"{vs['width']}x{vs['height']}", fps=num / den,
         nb_frames=int(vs.get("nb_frames", 0)), video_duration=float(vs["duration"]),
@@ -134,7 +135,7 @@ def verify(video: Path, root: Path, cfg: dict, log=print) -> dict:
     c["video_vs_expected_ms"] = round((c["video_duration"] - exp_dur) * 1000, 2)
     c["audio_vs_expected_ms"] = round((c["audio_duration"] - exp_dur) * 1000, 2) if aus else None
     if not meta["preview"]:
-        c["film_vs_track_ms"] = round((c["file_duration"] - an.duration) * 1000, 2)
+        c["film_vs_track_ms"] = round((c["file_duration"] - T / fps - an.duration) * 1000, 2)
 
     # ---- plan: cuts vs onsets ---------------------------------------------------------------------------
     edl = score.read_edl(sidecar(video, ".edl.csv"))
@@ -165,6 +166,11 @@ def verify(video: Path, root: Path, cfg: dict, log=print) -> dict:
     if aus:
         sr = cfg["analysis"]["sample_rate"]
         y = analysis.decode_audio(video, sr)
+        lead = int(round(T / fps * sr))               # the title card's silence, then the track
+        if T:
+            rep["title"] = dict(frames=T, seconds=round(T / fps, 4),
+                                peak_during=round(float(np.abs(y[:lead]).max()) if lead else 0.0, 6))
+        y = y[lead:]
         t_mux, _, _ = analysis.detect_onsets(y, cfg)
         mux_frames = analysis.snap(t_mux, fps, total) + f0
         e_f, un_a, un_m = match(onsets, mux_frames, tol=2)
@@ -180,7 +186,7 @@ def verify(video: Path, root: Path, cfg: dict, log=print) -> dict:
                             unmatched_original=len(un_a), unmatched_muxed=len(un_m))
         # ---- blind: pixels vs sound, no score involved ----------------------------------------------------
         heard = np.intersect1d(mux_frames, onsets) - f0       # heard in both the muxed and the original audio
-        offs = blind_offsets(dec, heard)
+        offs = blind_offsets(dec[T:], heard)
         bg = {int(r["frame"]) - f0 for r in edl if r.get("background")}      # frames showing the background video
         near = [(f, x) for f, x in offs if any(g in bg for g in range(f - 3, f + 3))]
         offs = [fx for fx in offs if fx not in near]
@@ -209,12 +215,14 @@ def verify(video: Path, root: Path, cfg: dict, log=print) -> dict:
     # ---- verdict ---------------------------------------------------------------------------------------
     ok = dict(
         plan=rep["plan"]["onsets_without_cut"] == 0 and rep["plan"]["cuts_off_onset"] == 0,
-        frame_count=len(dec) == len(ref) == total == c["nb_frames"],
+        frame_count=len(dec) == len(ref) == T + total == c["nb_frames"],
         frame_alignment=best == 0 and not wrong,
         audio_present=bool(aus) and c["audio_channels"] == 2,
         audio_sync=bool(aus) and rep["audio"]["max_offset_ms"] is not None and rep["audio"]["max_offset_ms"] <= 1.0,
         duration=abs(c["video_vs_expected_ms"]) < 1 and (not aus or abs(c["audio_vs_expected_ms"]) < 1000 / fps),
     )
+    if T and aus:
+        ok["title_silent"] = rep["title"]["peak_during"] < 1e-3
     rep["ok"] = ok
     rep["passed"] = all(ok.values())
     sidecar(video, ".verify.json").write_text(json.dumps(rep, indent=2, default=float))
@@ -247,6 +255,10 @@ def summary(rep: dict) -> str:
                      f"frame {f} by {x:+d}" for f, x in b["off"]) if b["off"] else "")
                  + (f" ({b['beside_background']} beside the background video left out)"
                     if b.get("beside_background") else ""))
+    if "title" in rep:
+        t = rep["title"]
+        L.append(f"  title      {t['seconds']:g} s ({t['frames']} frames) before the film; loudest sample under it "
+                 f"{t['peak_during']:g} (silent)" + ("" if t["peak_during"] < 1e-3 else " NOT SILENT"))
     if "truth" in rep:
         t = rep["truth"]
         L.append(f"  truth      {t['matched']}/{t['events']} test-track events detected ({t['exact_frame']} on the "
@@ -298,7 +310,7 @@ def stills(video: Path, out_dir: Path | None = None, frames: list[tuple[int, str
     meta = json.loads(sidecar(video, ".json").read_text())
     edl = score.read_edl(sidecar(video, ".edl.csv"))
     frames = frames or pick_stills(edl)
-    f0 = meta["first_frame"]
+    f0 = meta["first_frame"] - int(meta.get("title_frames") or 0)   # video frame 0 = the title card's first
     out_dir = Path(out_dir or video.with_name(video.stem + "_stills"))
     out_dir.mkdir(parents=True, exist_ok=True)
     sel = "+".join(f"eq(n\\,{f - f0})" for f, _ in frames)

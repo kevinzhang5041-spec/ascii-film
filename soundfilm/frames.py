@@ -142,6 +142,7 @@ class FrameRenderer:
         self.clips = clips or {}                     # {clip: {levels, file, index}} (clips.py; render decodes them first)
         self._clip_files: dict = {}
         self._grain = None
+        self._title = None                           # the title card's text, drawn once (title.py)
 
     # ---- sources -------------------------------------------------------------------------------------
     def image(self, path: str) -> np.ndarray:
@@ -272,8 +273,19 @@ class FrameRenderer:
         self._clip_files.clear()
 
     # ---- the frame -----------------------------------------------------------------------------------
+    def title(self, row: dict) -> np.ndarray:
+        """A title card frame: the background video (or black) with the text on top, steady."""
+        from . import title
+        out = self.background(row) if self.bgv and row.get("bg", -1) >= 0 else np.zeros((self.H, self.W, 3), np.uint8)
+        if self._title is None:
+            self._title = title.layer(self.cfg, self.W, self.H, self.font)
+        color, a = self._title
+        return (out * (1 - a) + color * a + 0.5).astype(np.uint8)
+
     def render(self, row: dict) -> np.ndarray:
         W, H = self.W, self.H
+        if row.get("title"):
+            return self.title(row)
         if row["image"] is None:
             if self.bgv and row.get("bg", -1) >= 0:
                 out = self.background(row)

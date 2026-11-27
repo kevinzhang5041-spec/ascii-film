@@ -183,6 +183,7 @@ textarea.cfg { width: 100%; height: 460px; resize: vertical; background: #0b0d0b
 .trow .colorpair { grid-column: 2 / 4; display: flex; gap: 6px; }
 .trow .colorpair input[type=color] { width: 34px; min-width: 34px; height: 28px; padding: 2px; background: #0f120f; border: 1px solid var(--line-2); border-radius: 6px; }
 .trow .chars { font: 13px var(--mono); padding: 4px 6px; }
+.trow textarea.chars { grid-column: 2 / 4; resize: vertical; min-height: 7.5em; line-height: 1.35; }
 .trow .reset { background: none; border: 0; color: var(--faint); cursor: pointer; padding: 0; font-size: 13px; visibility: hidden; }
 .trow .reset.on { visibility: visible; }
 .trow .reset:hover { color: var(--text); }
@@ -925,6 +926,15 @@ const TUNE = [
     R('clips.speed', 'speed', 0, 4, 0.05, '1 = real time, 0.5 = half speed, 2 = twice as fast, 0 = a still from the clip.'),
     R('clips.start', 'skip start (s)', 0, 10, 0.1, 'Seconds left out at the start of every clip (the shake as you press record). A clip loops at its end.'),
   ]},
+  {group: 'Title card', note: 'your words in a corner before the film, over the background video, in silence', items: [
+    {p: 'title.text', label: 'text', kind: 'textarea', placeholder: 'the title\nby you', hint: 'The words, line by line. Empty: no title card. A full render starts with it, and so does a preview from 0 s.'},
+    {p: 'title.enabled', label: 'show it', kind: 'bool', hint: 'Off: no title card, but the text is kept.'},
+    R('title.seconds', 'seconds', 1, 15, 0.5, 'How long the card shows. The film and the music start after it.'),
+    {p: 'title.corner', label: 'corner', kind: 'select', options: ['top-right', 'top-left', 'bottom-right', 'bottom-left', 'centre']},
+    R('title.size', 'text size', 0.01, 0.1, 0.001, 'Height of a line of text, as a share of the frame height.'),
+    R('title.margin', 'margin', 0, 0.2, 0.005, 'Distance from the edges of the frame, as a share of its height.'),
+    {p: 'title.color', label: 'colour', kind: 'color', hint: 'The text colour. Empty: the mono tint.'},
+  ]},
   {group: 'Background video', note: 'a clip instead of black (add it under Inputs); the last live frame shows it', items: [
     {p: 'background.enabled', label: 'use it', kind: 'bool', hint: 'Off: black, as before. Nothing happens until there is a video in the background box.'},
     {p: 'background.show_in', label: 'shows in', kind: 'select', options: ['black', 'silence'], hint: 'black: every frame that would be black (silence, before the first hit, after a shot fades). silence: only where the track itself is silent.'},
@@ -963,6 +973,8 @@ function rowHTML(it) {
     ctl = `<select class="in wide2" data-p="${it.p}" data-kind="select">${it.options.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
   } else if (it.kind === 'color') {
     ctl = `<span class="colorpair">${isHex(v) ? `<input type="color" data-p="${it.p}" data-kind="color" value="${v}">` : ''}<input class="in" data-p="${it.p}" data-kind="text" value="${esc(v)}"></span>`;
+  } else if (it.kind === 'textarea') {
+    ctl = `<textarea class="in chars" data-p="${it.p}" data-kind="text" data-empty="1" rows="${it.rows || 6}" spellcheck="false" placeholder="${esc(it.placeholder || '')}">${esc(v)}</textarea>`;
   } else if (it.kind === 'chars') {
     ctl = `<input class="in chars" data-p="${it.p}" data-kind="text" value="${esc(v)}" spellcheck="false"${it.empty ? ' data-empty="1" placeholder="(the photos\' set)"' : ''}>`;
   }
@@ -1062,7 +1074,8 @@ async function simulate() {
     $('#lookImg').hidden = !r.look; $('#lookEmpty').hidden = !!r.look;
     if (r.look) $('#lookImg').src = r.look;
     else $('#lookEmpty').textContent = 'No cuts after the preview start.';
-    $('#lookCap').textContent = `first cuts from ${fmtT(t)} (the preview start)${r.background ? ', then the background video' : ''}, ${dirty ? 'with your unsaved changes' : 'as saved'}`;
+    const card = t <= 0 && cur('title.enabled') !== false && String(cur('title.text') || '').trim();
+    $('#lookCap').textContent = `${card ? 'the title card, then the ' : ''}first cuts from ${fmtT(t)} (the preview start)${r.background ? ', then the background video' : ''}, ${dirty ? 'with your unsaved changes' : 'as saved'}`;
     drawStats(r.stats, dirty ? savedStats : null);
     secStats = r.stats.sections || null; if (SS && $('#seclist')) drawSecList();
   } catch (e) {
@@ -1136,7 +1149,15 @@ function showFrame(force = false, mediaTime = null) {
   // the frame on screen: requestVideoFrameCallback's mediaTime is that frame's own timestamp; currentTime
   // can be a frame either side of it while playing
   const t = mediaTime != null ? mediaTime : v.currentTime;
-  const i = Math.max(0, Math.min(n - 1, Math.floor(t * edl.fps + 1e-3)));
+  const k = Math.floor(t * edl.fps + 1e-3) - (edl.title_frames || 0);      // the title card comes first
+  if (k < 0) {
+    if (lastIdx === -2 && !force) return;
+    lastIdx = -2; lastPhoto = null;
+    $('#pimg').classList.add('dim'); $('#pcrop').hidden = true; $('#pnote').hidden = false; $('#pnote').textContent = 'title card';
+    setHTML($('#pcap'), `<span class="k">title card</span> ${fmtT(t)} · the film starts at ${fmtT(edl.title_frames / edl.fps)}`);
+    return;
+  }
+  const i = Math.max(0, Math.min(n - 1, k));
   if (i === lastIdx && !force) return;
   lastIdx = i;
   const name = edl.name[i], kind = edl.kind[i], img = $('#pimg');
@@ -1332,16 +1353,17 @@ function saveSections(ms = 200) {
 function playT() {
   const v = $('#video'), r = ((S && S.renders) || []).find(x => x.name === selVideo);
   if (!r || v.hidden || !v.duration) return null;
-  return renderStart(r) + v.currentTime;
+  return renderStart(r) + Math.max(0, v.currentTime - titleSec(r));
 }
+const titleSec = r => r.meta && r.meta.title_frames && r.meta.fps ? r.meta.title_frames / r.meta.fps : 0;
 // where a render starts in the track: its first frame (a preview from 13.01 s starts on the frame at 13.0 s)
 const renderStart = r => r.meta && r.meta.first_frame != null && r.meta.fps ? r.meta.first_frame / r.meta.fps
   : (r.meta && r.meta.preview ? r.meta.preview[0] : 0);
 function seekTo(t) {                                       // move the player there if the render covers t
   const v = $('#video'), r = ((S && S.renders) || []).find(x => x.name === selVideo);
   if (!r || !v.duration) return;
-  const t0 = renderStart(r);
-  if (t >= t0 && t - t0 <= v.duration) v.currentTime = t - t0;
+  const t0 = renderStart(r), lead = titleSec(r);
+  if (t >= t0 && t - t0 + lead <= v.duration) v.currentTime = t - t0 + lead;
 }
 function splitAt(t) {
   const i = secAt(t);

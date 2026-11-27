@@ -91,6 +91,15 @@ background:                     # a video instead of the black between and aroun
   start: 0.0                    # seconds into the video where it begins; it loops at its end
   fade_frames: 0                # frames it takes to come up after a photo (0 = at once)
 
+title:                          # a title card before the film: your words in a corner, over the background video
+  enabled: true                 # nothing shows until `text` has words in it
+  text: ""                      # the words; a new line in the dashboard, or \n here: "my film\nby me"
+  seconds: 5.0                  # how long it shows, in silence; then the film and the music start as before
+  corner: top-right             # top-right | top-left | bottom-right | bottom-left | centre
+  size: 0.03                    # height of a line of text, as a share of the frame height
+  margin: 0.05                  # distance from the frame's edges, as a share of the frame height
+  color: ""                     # text colour ("" = ascii.tint)
+
 ascii:
   resolution:                   # RMS -> characters across the frame
     cols_quiet: 15

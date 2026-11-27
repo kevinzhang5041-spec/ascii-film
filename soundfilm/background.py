@@ -79,7 +79,10 @@ def plan(root: Path, cfg: dict) -> dict | None:
         raise SystemExit(f"{p.name} is too short to use as the background video")
     start = min(frames - 1, max(0, int(round(float(cfg["background"]["start"]) * fps))))
     lv = levels(root, p, info) if cfg["ascii"].get("auto_level", True) else None
-    return dict(path=str(p), name=p.name, info=info, fps=fps, frames=frames, start=start, levels=lv)
+    from .title import frames as title_frames
+    # lead: frames of the video the title card shows before the film, so the film carries on from there
+    return dict(path=str(p), name=p.name, info=info, fps=fps, frames=frames, start=start, levels=lv,
+                lead=title_frames(cfg))
 
 
 def levels(root: Path, p: Path, info: af.MediaInfo) -> list[float] | None:
@@ -118,10 +121,11 @@ def assign(rows: list[dict], cfg: dict, bg: dict | None) -> None:
     show = ("silence",) if b["show_in"] == "silence" else ("silence", "black")
     level, fade = float(np.clip(b["level"], 0, 1)), max(0, int(b["fade_frames"]))
     loop = bg["frames"] - bg["start"] if bg else 0
-    shown = run = 0
+    lead = bg.get("lead", 0) if bg else 0          # the title card played the first `lead` frames of it
+    shown = run = lead
     for r in rows:
         if bg and r["kind"] in show:
-            i = r["frame"] if b["clock"] == "film" else shown
+            i = r["frame"] + lead if b["clock"] == "film" else shown
             run += 1
             shown += 1
             r["bg"] = bg["start"] + i % loop

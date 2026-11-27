@@ -24,6 +24,7 @@ Put your files here:
 | `images/texture/` | scans for the middle of the spectrum |
 | `images/dark/` | scans for low, heavy sounds |
 | `background/video.mov` | optional: a clip that plays instead of black (`.mp4` / `.m4v` work too) |
+| `title:` in `config.yaml` | optional: a title card before the film (Tune → Title card) |
 
 Then:
 
@@ -117,6 +118,20 @@ The options are under `background:` in `config.yaml`, and in Tune → **Backgrou
 
 *Remove…* on the box takes the clip out of the film by moving it to `.work/replaced/`. *use it* in Tune turns it off and leaves the file where it is. Without a clip, or with it off, the film is exactly what it was before. The EDL's `background` column gives the video's frame number for each frame that shows it, and the `--debug` overlay names it too.
 
+### A title card
+
+The film can open with a title card: your words in a corner of the frame, over the background video (or black if there isn't one), in silence. When it ends, the film and the music start exactly as they would without it, so the film gets that much longer. The background video plays under the card from its **start at** point and carries straight on into the film.
+
+Type the words in Tune → **Title card**, one line per line (an empty line leaves a gap), or put them under `title:` in `config.yaml` (`text: "my film\nby me"`). The other options:
+
+- **show it:** off hides the card but keeps the text.
+- **seconds:** how long it shows (5 to start with).
+- **corner:** `top-right`, `top-left`, `bottom-right`, `bottom-left` or `centre`. Lines are aligned to that side.
+- **text size** and **margin:** shares of the frame height. A line of text is 0.03 of it (32 px at 1080p), 0.05 in from the edges.
+- **colour:** empty uses the mono tint.
+
+The text is plain, in the characters' monospace font, and it holds still: no grain or gate weave on it. Every full render starts with the card, and so does a preview from 0 s. The live frames in Tune show it first when the preview start is 0. Nothing changes until there's text: without it the film is exactly what it was before. `verify` checks that the card is silent and that the music starts exactly when it ends.
+
 ### Sorting photos automatically
 
 ```bash
@@ -207,11 +222,12 @@ That analyses the track, renders the full film, a `--debug` film and a 13-17 s p
 - **frames**: the decoded video matches, frame by frame, what the renderer sent to the encoder. So nothing was dropped, duplicated or shifted.
 - **audio**: the muxed soundtrack is cross-correlated with the original at points from start to end. It passes if it's within 1 ms everywhere, which also rules out drift. A delay of 10 ms shows up as 480 samples and fails. Onsets re-detected from the AAC are listed for information. In a dense track a few land on a neighbouring peak, which is the detector, not timing.
 - **blind**: from pixels and sound only: for each isolated onset, does the biggest burst of new light happen on that exact frame? Onsets right next to the background video are left out, because the video brings light of its own when a shot ends.
-- **duration**: the video and audio streams match the track (or the preview range)
+- **duration**: the video and audio streams match the track (or the preview range), plus the title card
+- **title**: the title card is silent, and the music starts exactly when it ends
 - **truth** (test track only): detected onsets vs the times the sounds were actually placed at
 
 ## Code
 
-`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `sets.py` (photo sets and track sections), `clips.py` (video clips in the pools), `background.py` (the video instead of black), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html`, `web/sort.html` and `web/drag.js` (`./film dashboard`), `__main__.py` (the `./film` command).
+`soundfilm/`: `analysis.py` (librosa features, `analysis.json`), `score.py` (the mapping rules, one decision per frame), `sets.py` (photo sets and track sections), `clips.py` (video clips in the pools), `background.py` (the video instead of black), `title.py` (the title card), `frames.py` (draws a frame: crop, layer, colour, exposure, then `ascii_film`, then grain and jitter), `render.py` (parallel segments → x264 → mux), `debug.py` (overlay), `plot.py`, `verify.py`, `testgen.py`, `dashboard.py` + `web/index.html`, `web/sort.html` and `web/drag.js` (`./film dashboard`), `__main__.py` (the `./film` command).
 
 Speed: about 190 frames/s at 1080p on an Apple M5 Pro, so a 3-minute film takes about 25 s.

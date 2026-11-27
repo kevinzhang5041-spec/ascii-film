@@ -86,6 +86,14 @@ def _check(cfg: dict) -> None:
         raise SystemExit('config: background.chars needs at least 2 different characters (or "" for the photos\' set)')
     if not 0 <= float(cfg["editing"]["between_onsets"]["sustain"]) <= 1:
         raise SystemExit("config: editing.between_onsets.sustain must be between 0 and 1")
+    t = cfg["title"]
+    corners = ("top-right", "top-left", "bottom-right", "bottom-left", "centre")
+    if t["corner"] not in corners:
+        raise SystemExit(f"config: title.corner must be one of {', '.join(corners)}, not {t['corner']!r}")
+    if not 0 < float(t["seconds"]) <= 60:
+        raise SystemExit("config: title.seconds must be more than 0 and at most 60")
+    if not 0.005 <= float(t["size"]) <= 0.3 or not 0 <= float(t["margin"]) <= 0.4:
+        raise SystemExit("config: title.size must be 0.005-0.3 and title.margin 0-0.4 (shares of the frame height)")
     c = cfg["clips"]
     if c["clock"] not in ("shots", "film", "random"):
         raise SystemExit(f"config: clips.clock must be shots, film or random, not {c['clock']!r}")

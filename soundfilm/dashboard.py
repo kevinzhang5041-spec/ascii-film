@@ -281,8 +281,8 @@ def _renders(cfg) -> list[dict]:
         if mp.exists():
             try:
                 m = json.loads(mp.read_text())
-                e["meta"] = {k: m.get(k) for k in ("seed", "frames", "fps", "first_frame", "preview", "debug", "cuts",
-                                                   "width", "height", "seconds", "fps_rendered")}
+                e["meta"] = {k: m.get(k) for k in ("seed", "frames", "fps", "first_frame", "title_frames", "preview",
+                                                   "debug", "cuts", "width", "height", "seconds", "fps_rendered")}
             except (json.JSONDecodeError, OSError):
                 pass
         e["verify"] = _verify_info(v)
@@ -792,12 +792,16 @@ def _look(cfg: dict, sc, t: float, views: dict, n: int = 4, bg: dict | None = No
         full = [r for r in shown if r["bg_gain"] >= float(cfg["background"]["level"]) - 1e-6]
         if shown:
             picks = picks[:n - 1] + [(full or shown)[0]]
+    from . import title as titlemod
+    T = titlemod.frames(cfg) if t <= 0 else 0              # from 0 s the film opens with the title card
+    if T:
+        picks = [titlemod.rows(cfg, bg, T, sc.rows[0]["band"] if sc.rows else 0)[T // 2]] + picks[:n - 1]
     if not picks:
         return None
     W, H = 960, 540
     bkey = [cfg["background"], bg["path"], _mtime(Path(bg["path"])), bg["levels"]] if bg else None
     key = config.digest([cfg["ascii"], cfg["treatments"], cfg["editing"]["flash"], cfg["seed"],
-                         [b["chars"] for b in sc.bands], views, bkey])
+                         [b["chars"] for b in sc.bands], views, bkey, cfg["title"]])
     if _SIM.get("fr_key") != key:
         if _SIM.get("fr"):
             _SIM["fr"].close()
@@ -809,7 +813,9 @@ def _look(cfg: dict, sc, t: float, views: dict, n: int = 4, bg: dict | None = No
     tiles = []
     for r in picks:
         img = fr.render(r)
-        if r["image"] is None:
+        if r.get("title"):
+            lab = f"title card ({T / fps:g} s before the film)" + ("  over the background video" if r["bg"] >= 0 else "")
+        elif r["image"] is None:
             lab = f"{r['frame'] / fps:7.2f}s  background video ({r['kind']})  frame {r['bg']}"
         else:
             lab = f"{r['frame'] / fps:7.2f}s  {r['pool']}  {sc.bands[r['band']]['name']}  {r['cols']} cols" + \
@@ -1046,6 +1052,7 @@ def edl_frames(video: str) -> dict:
     meta = json.loads(render.sidecar(v, ".json").read_text()) if render.sidecar(v, ".json").exists() else {}
     rows = score.read_edl(p)
     return {"fps": meta.get("fps", 24), "first_frame": int(rows[0]["frame"]) if rows else 0,
+            "title_frames": int(meta.get("title_frames") or 0),
             "name": [r["name"] for r in rows], "kind": [r["kind"] for r in rows],
             "crop": [r.get("crop", "") for r in rows], "view": [r.get("view", "") for r in rows],
             "layer": [r.get("layer_name", "") for r in rows],

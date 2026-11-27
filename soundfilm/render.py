@@ -25,7 +25,7 @@ import numpy as np
 
 import ascii_film as af
 
-from . import analysis, background, clips, config, debug, score
+from . import analysis, background, clips, config, debug, score, title
 from .frames import FrameRenderer, work_width
 
 MIN_SEGMENT_FRAMES = 96
@@ -76,11 +76,14 @@ def _segment(job: dict) -> np.ndarray:
     return fps_
 
 
-def mux(parts: list[Path], dst: Path, track: Path, t0: float, dur: float, bitrate: str) -> None:
-    """Join the video segments (stream copy) and add the soundtrack, trimmed to [t0, t0 + dur) exactly."""
+def mux(parts: list[Path], dst: Path, track: Path, t0: float, dur: float, bitrate: str, lead: float = 0.0) -> None:
+    """Join the video segments (stream copy) and add the soundtrack, trimmed to [t0, t0 + dur) exactly, after
+    `lead` seconds of silence (the title card)."""
     lst = dst.with_suffix(".txt")
     lst.write_text("".join("file '{}'\n".format(str(p).replace("'", "'\\''")) for p in parts))
-    af_chain = f"atrim=start={t0:.6f}:duration={dur:.6f},asetpts=PTS-STARTPTS,apad=whole_dur={dur:.6f}"
+    delay = f"aresample=48000,adelay=delays={int(round(lead * 48000))}S:all=1," if lead > 0 else ""
+    af_chain = (f"atrim=start={t0:.6f}:duration={dur:.6f},asetpts=PTS-STARTPTS,{delay}"
+                f"apad=whole_dur={lead + dur:.6f}")
     cmd = [af.tool("ffmpeg"), "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-i", str(track),
            "-map", "0:v:0", "-map", "1:a:0", "-af", af_chain, "-c:v", "copy", "-c:a", "aac", "-b:a", bitrate,
            "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-f", "mp4", str(dst)]
@@ -134,7 +137,11 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     W, H = af.even(v["width"]), af.even(v["height"])
     codec = ["-c:v", "libx264", "-preset", str(v["preset"]), "-crf", str(v["crf"])]
     rows = sc.rows[f0:f1]
-    total = len(rows)
+    T = title.frames(cfg) if f0 == 0 else 0           # the title card: before a full render, or a preview from 0
+    if T:
+        log(f"title card: {T / fps:.1f} s in silence, over {'the background video' if bg else 'black'}, then the film")
+    frames_out = title.rows(cfg, bg, T, rows[0]["band"] if rows else 0) + rows
+    total = len(frames_out)
 
     renders = root / cfg["paths"]["renders"]
     dst = Path(out) if out else renders / output_name(seed, preview, debug_)
@@ -154,7 +161,7 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
                 threads=max(2, cpu // nseg) if nseg > 1 else 0,
                 timeline=debug.timeline(an, sc) if debug_ else None, views=views, background=bg,
                 clips=clip_frames)
-    seg_jobs = [dict(base, rows=rows[bounds[i]:bounds[i + 1]], out=str(work / f"seg{i:03d}.mp4"))
+    seg_jobs = [dict(base, rows=frames_out[bounds[i]:bounds[i + 1]], out=str(work / f"seg{i:03d}.mp4"))
                 for i in range(nseg)]
 
     log(f"rendering {total} frames ({f0 / fps:.2f}-{f1 / fps:.2f} s) at {W}x{H}, seed {seed}, "
@@ -194,7 +201,8 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
                 if not running:
                     break
             fp = [f.result() for f in futs]
-        mux([Path(j["out"]) for j in seg_jobs], tmp, an.track, f0 / fps, total / fps, cfg["video"]["audio_bitrate"])
+        mux([Path(j["out"]) for j in seg_jobs], tmp, an.track, f0 / fps, len(rows) / fps,
+            cfg["video"]["audio_bitrate"], lead=T / fps)
         os.replace(tmp, dst)
         ok = True
     except BaseException:
@@ -210,7 +218,8 @@ def render(root: Path, cfg: dict, *, seed: int | None = None, debug_: bool = Fal
     score.write_edl(rows, sc.bands, sidecar(dst, ".edl.csv"))
     np.save(sidecar(dst, ".fp.npy"), np.concatenate(fp))
     secs = time.time() - t_start
-    meta = dict(video=dst.name, seed=seed, fps=fps, first_frame=f0, end_frame=f1, frames=total, width=W, height=H,
+    meta = dict(video=dst.name, seed=seed, fps=fps, first_frame=f0, end_frame=f1, frames=total, title_frames=T,
+                width=W, height=H,
                 debug=debug_, preview=list(preview) if preview else None, track=str(an.track),
                 background=bg["name"] if bg else None, clips=len(need),
                 analysis_sha1=an.data["key"]["sha1"], config=config.digest(cfg), cuts=sum(r["kind"] == "cut"
